@@ -6,6 +6,31 @@ import ReasonChips from "../components/ReasonChips";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { searchPlaces } from "../services/placesAutocomplete";
 import { useAuth } from "../context/useAuth";
+import { usePipeline } from "../services/generateTrip";
+import { supabase } from "../lib/supabase";
+import { CARD_DATA } from "../data/cards";
+
+const LISBON_FALLBACK = "Lisbon, Portugal";
+
+function enrichedToCard(location, destination) {
+  const id = `gen-${location.placeId || location.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  return {
+    id,
+    name: location.name,
+    area: location.address || destination,
+    cat: [location.category || "Place"],
+    cost: location.rating ? `★ ${location.rating}` : "—",
+    img: location.thumbnail || "/images/alfama.jpg",
+    blurb: "",
+    likeR: [],
+    noR: [],
+    detail: [],
+    lat: location.lat,
+    lng: location.lng,
+    styleHint: location.styleHint,
+    generated: true,
+  };
+}
 
 const initialSheets = { reason: false, detail: false, addPlace: false, more: false };
 const preferenceOptions = {
@@ -53,9 +78,12 @@ const HeartIcon = () => (
 
 export default function SwipeScreen({ useAppState }) {
   const navigate = useNavigate();
-  const { profile } = useAuth();
-  const { idx, likes, skips, reasonCount, swipeCard, saveReason, allCards, appendCard, preferenceProfiles, savePreferenceProfile } = useAppState;
+  const { profile, session } = useAuth();
+  const { idx, likes, skips, swipeCard, saveReason, allCards, appendCard, appendGeneratedCards, markPipelineCompleted, preferenceProfiles, savePreferenceProfile, dest, pipelineCompleted } = useAppState;
+  const pipeline = usePipeline();
   const preferenceId = profile?.id || profile?.username || "guest";
+  const ingestedRef = useRef(0);
+  const currentSwipeIdRef = useRef(null);
   const [preferenceOpen, setPreferenceOpen] = useState(() => sessionStorage.getItem("edit-preferences") === "true");
   const [preferences, setPreferences] = useState(() => ({ ...emptyPreferences, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
   useEffect(() => {
@@ -81,23 +109,84 @@ export default function SwipeScreen({ useAppState }) {
   const debounceRef = useRef(null);
   const searchSeqRef = useRef(0);
 
-  const remaining = allCards.slice(idx);
-  const total = allCards.length;
+  // Ingest enriched pipeline locations into the card deck as they stream in.
+  useEffect(() => {
+    if (pipeline.enriched.length < ingestedRef.current) {
+      ingestedRef.current = 0;
+    }
+    if (pipeline.enriched.length <= ingestedRef.current) return;
+    const fresh = pipeline.enriched.slice(ingestedRef.current);
+    ingestedRef.current = pipeline.enriched.length;
+    appendGeneratedCards(fresh.map((loc) => enrichedToCard(loc, dest || LISBON_FALLBACK)));
+    if (!pipelineCompleted) markPipelineCompleted(dest || LISBON_FALLBACK);
+    if (pipeline.enriched.length >= 2 && useAppState.pipelineThinFallback) {
+      useAppState.update({ pipelineThinFallback: false });
+    }
+  }, [pipeline.enriched, appendGeneratedCards, markPipelineCompleted, dest, pipelineCompleted, useAppState]);
+
+  // Q22: pipeline ended with <2 enriched spots (or errored) → fall back to Lisbon hardcoded deck.
+  useEffect(() => {
+    const thinOrFailed = (pipeline.done && pipeline.enriched.length < 2) || (Boolean(pipeline.error) && pipeline.enriched.length < 2);
+    if (thinOrFailed && dest && dest !== LISBON_FALLBACK && !useAppState.pipelineThinFallback) {
+      useAppState.update({ pipelineThinFallback: true });
+    }
+  }, [pipeline.done, pipeline.error, pipeline.enriched.length, dest, useAppState]);
+
+  // Q11: when a non-Lisbon destination is set (and pipeline produced a usable deck),
+  // hide the Lisbon hardcoded fallback cards.
+  const hardcodedIds = useMemo(() => new Set(CARD_DATA.map((c) => c.id)), []);
+  const hideHardcoded = Boolean(dest && dest !== LISBON_FALLBACK && !useAppState.pipelineThinFallback);
+  const visibleCards = useMemo(
+    () => (hideHardcoded ? allCards.filter((c) => !hardcodedIds.has(c.id)) : allCards),
+    [allCards, hideHardcoded, hardcodedIds],
+  );
+
+  const remaining = visibleCards.slice(idx);
+  const total = visibleCards.length;
   const spiralItems = useMemo(
-    () => allCards.map((card) => ({ id: card.id, src: card.img, alt: card.name })),
-    [allCards],
+    () => visibleCards.map((card) => ({ id: card.id, src: card.img, alt: card.name })),
+    [visibleCards],
   );
 
   const handleVerdict = (dir) => {
-    const card = allCards[idx];
+    const card = visibleCards[idx];
     if (!card) return;
+    const swipeId = crypto.randomUUID();
+    currentSwipeIdRef.current = swipeId;
     swipeCard(dir);
+    persistSwipe(card, dir, null, swipeId);
     setReasonCard(card);
     setReasonDir(dir);
     setReasonSel([]);
     setReasonFree("");
     dispatchSheets({ type: "reason" });
   };
+
+  // Synchronous per-swipe upsert into public.swipes (fire-and-forget, never blocks UI)
+  const persistSwipe = useCallback((card, dir, reasons = null, id = null) => {
+    if (!session?.user?.id || !card) return;
+    const swipeId = id || currentSwipeIdRef.current || crypto.randomUUID();
+    const finalReasons = reasons && reasons.length > 0 ? reasons : null;
+    const finalReason = finalReasons ? finalReasons.join(", ") : null;
+    supabase
+      .from("swipes")
+      .upsert(
+        {
+          id: swipeId,
+          user_id: session.user.id,
+          card_id: String(card.id),
+          card_name: card.name,
+          destination: dest || LISBON_FALLBACK,
+          direction: dir === "yes" ? "like" : "skip",
+          reasons: finalReasons,
+          reason: finalReason,
+        },
+        { onConflict: "id" }
+      )
+      .then(({ error }) => {
+        if (error) console.warn("Swipe persistence failed:", error.message);
+      });
+  }, [session, dest]);
 
   const saveAndClose = () => {
     if (!reasonCard) {
@@ -106,12 +195,15 @@ export default function SwipeScreen({ useAppState }) {
     }
     const reasons = [...reasonSel];
     if (reasonFree.trim()) reasons.push(reasonFree.trim());
+    const finalReasons = reasons.length > 0 ? reasons : null;
+
     saveReason(reasonCard.id, reasonDir, reasons);
+    persistSwipe(reasonCard, reasonDir, finalReasons, currentSwipeIdRef.current);
     dispatchSheets({ type: "close" });
   };
 
   const openDetail = (card) => {
-    setDetailCard(card || (idx < total ? allCards[idx] : null));
+    setDetailCard(card || (idx < total ? visibleCards[idx] : null));
     dispatchSheets({ type: "detail" });
   };
 
@@ -218,19 +310,33 @@ return (
         {idx >= total && !sheets.reason ? (
           <div className="deck-zone empty">
             <div className="deck sw-empty card">
-              <div className="eyebrow">Deck cleared</div>
-              <h2 className="h-display" style={{ fontSize: 23 }}>
-                That's a full opinion.
-              </h2>
-              <p className="splash-copy" style={{ textAlign: "center" }}>
-                {likes} likes, {skips} skips and every reason is now a weighted signal — not just a tick box.
-              </p>
-              <button className="btn btn-primary" onClick={() => navigate("/style")}>
-                See my summary
-              </button>
-              <button className="btn btn-secondary" style={{ marginTop: 8 }} onClick={() => dispatchSheets({ type: "addPlace" })}>
-                More itineraries on your mind?
-              </button>
+              {pipeline.streaming ? (
+                <>
+                  <div className="eyebrow">Generating</div>
+                  <h2 className="h-display" style={{ fontSize: 23 }}>
+                    Finding spots in {dest || "your destination"}…
+                  </h2>
+                  <p className="splash-copy" style={{ textAlign: "center" }}>
+                    {pipeline.enriched.length} loaded so far — cards appear here as they're found.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="eyebrow">Deck cleared</div>
+                  <h2 className="h-display" style={{ fontSize: 23 }}>
+                    That's a full opinion.
+                  </h2>
+                  <p className="splash-copy" style={{ textAlign: "center" }}>
+                    {likes} likes, {skips} skips and every reason is now a weighted signal — not just a tick box.
+                  </p>
+                  <button className="btn btn-primary" onClick={() => navigate("/style")}>
+                    See my summary
+                  </button>
+                  <button className="btn btn-secondary" style={{ marginTop: 8 }} onClick={() => dispatchSheets({ type: "addPlace" })}>
+                    More itineraries on your mind?
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ) : (
@@ -403,6 +509,43 @@ return (
             </button>
           </div>
         </BottomSheet>
+
+        {(pipeline.streaming || pipeline.error) && (
+          <div
+            role="status"
+            style={{
+              position: "fixed",
+              right: 16,
+              bottom: 84,
+              zIndex: 50,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 14,
+              padding: "10px 14px",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.22)",
+              fontSize: 13,
+              color: "var(--fg)",
+              maxWidth: 260,
+            }}
+          >
+            {pipeline.streaming && (
+              <>
+                <div style={{ fontWeight: 600 }}>
+                  Generating your trip… {pipeline.enriched.length} spot{pipeline.enriched.length === 1 ? "" : "s"} loaded
+                </div>
+                <button
+                  onClick={() => navigate("/profile")}
+                  style={{ background: "none", border: "none", padding: 0, marginTop: 4, color: "var(--accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                >
+                  Manage trip →
+                </button>
+              </>
+            )}
+            {pipeline.error && !pipeline.streaming && (
+              <div style={{ color: "var(--nom, #c0392b)" }}>Couldn't generate spots — using fallback deck.</div>
+            )}
+          </div>
+        )}
 
         <BottomSheet
           open={sheets.more}

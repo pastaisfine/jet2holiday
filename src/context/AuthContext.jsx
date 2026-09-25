@@ -5,6 +5,7 @@ import { AuthContext } from "./auth-state";
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
+  const [dbProfile, setDbProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,6 +44,68 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  // Fetch the DB profile whenever the user changes
+  useEffect(() => {
+    if (!user) {
+      setDbProfile(null);
+      return;
+    }
+
+    let mounted = true;
+
+    async function loadProfile() {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (data && mounted) {
+          setDbProfile(data);
+        } else if (!data && user && mounted) {
+          const meta = user.user_metadata || {};
+          const fallbackUsername = meta.username || meta.full_name || user.email?.split("@")[0] || "Traveler";
+          const { data: created } = await supabase
+            .from("profiles")
+            .upsert({
+              id: user.id,
+              username: fallbackUsername,
+              avatar_url: meta.avatar_url || "",
+              avatar_color: "#F19A6A",
+            })
+            .select()
+            .single();
+
+          if (created && mounted) {
+            setDbProfile(created);
+          }
+        }
+      } catch (err) {
+        console.warn("Error loading or creating profile:", err);
+      }
+    }
+
+    loadProfile();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  const fetchProfile = useCallback(async () => {
+    if (!user) return null;
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+    if (!error && data) {
+      setDbProfile(data);
+    }
+    return data;
+  }, [user]);
+
   const signUp = useCallback(async ({ email, password, username, avatarUrl }) => {
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -72,22 +135,61 @@ export function AuthProvider({ children }) {
     if (error) throw error;
     setSession(null);
     setUser(null);
+    setDbProfile(null);
   }, []);
 
   const updateProfile = useCallback(async ({ username, avatarUrl }) => {
-    const updates = {};
-    if (username !== undefined) updates.username = username.trim();
-    if (avatarUrl !== undefined) updates.avatar_url = avatarUrl.trim();
+    const authUpdates = {};
+    if (username !== undefined) authUpdates.username = username.trim();
+    if (avatarUrl !== undefined) authUpdates.avatar_url = avatarUrl.trim();
 
+    // Update auth user metadata
     const { data, error } = await supabase.auth.updateUser({
-      data: updates,
+      data: authUpdates,
     });
     if (error) throw error;
     if (data?.user) {
       setUser(data.user);
     }
+
+    // Also update the profiles table
+    if (user) {
+      const dbUpdates = {};
+      if (username !== undefined) dbUpdates.username = username.trim();
+      if (avatarUrl !== undefined) dbUpdates.avatar_url = avatarUrl.trim();
+
+      const { error: dbError } = await supabase
+        .from("profiles")
+        .update(dbUpdates)
+        .eq("id", user.id);
+      if (dbError) console.warn("Profile DB update failed:", dbError);
+      else await fetchProfile();
+    }
+
     return data;
-  }, []);
+  }, [user, fetchProfile]);
+
+  const savePreferences = useCallback(async (preferences) => {
+    if (!user) return;
+
+    const updates = {
+      rhythm: preferences.rhythm || "",
+      density: preferences.density || "",
+      dining: preferences.dining || "",
+      food_budget: preferences.foodBudget || "",
+      dietary: preferences.dietary || [],
+      preference_note: preferences.note || "",
+      preferences_completed: preferences.completed ?? false,
+    };
+
+    const { error } = await supabase
+      .from("profiles")
+      .update(updates)
+      .eq("id", user.id);
+
+    if (error) throw error;
+    await fetchProfile();
+  }, [user, fetchProfile]);
 
   const sendPasswordReset = useCallback(async (email) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -107,15 +209,25 @@ export function AuthProvider({ children }) {
   const profile = useMemo(() => {
     if (!user) return null;
     const meta = user.user_metadata || {};
-    const username = meta.username || meta.full_name || (user.email ? user.email.split("@")[0] : "Traveler");
+    const username = dbProfile?.username || meta.username || meta.full_name || (user.email ? user.email.split("@")[0] : "Traveler");
     return {
       id: user.id,
       email: user.email,
       username,
-      avatarUrl: meta.avatar_url || "",
+      avatarUrl: dbProfile?.avatar_url || meta.avatar_url || "",
+      avatarColor: dbProfile?.avatar_color || "#F19A6A",
       isEmailVerified: !!user.email_confirmed_at,
+      // Preferences from DB
+      rhythm: dbProfile?.rhythm || "",
+      density: dbProfile?.density || "",
+      dining: dbProfile?.dining || "",
+      foodBudget: dbProfile?.food_budget || "",
+      dietary: dbProfile?.dietary || [],
+      preferenceNote: dbProfile?.preference_note || "",
+      preferencesCompleted: dbProfile?.preferences_completed || false,
+      travelStyle: dbProfile?.travel_style || "",
     };
-  }, [user]);
+  }, [user, dbProfile]);
 
   const value = useMemo(
     () => ({
@@ -129,8 +241,10 @@ export function AuthProvider({ children }) {
       updateProfile,
       updatePassword,
       sendPasswordReset,
+      savePreferences,
+      fetchProfile,
     }),
-    [user, session, profile, loading, signUp, signIn, signOut, updateProfile, updatePassword, sendPasswordReset]
+    [user, session, profile, loading, signUp, signIn, signOut, updateProfile, updatePassword, sendPasswordReset, savePreferences, fetchProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

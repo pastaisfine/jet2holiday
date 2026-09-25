@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
+import { supabase } from "../lib/supabase";
+import { resetPipeline } from "../services/generateTrip";
 
 function ProfileDetailsForm({ profile, updateProfile }) {
   const [usernameInput, setUsernameInput] = useState(profile?.username || "");
@@ -40,7 +42,7 @@ function ProfileDetailsForm({ profile, updateProfile }) {
 export default function ProfileScreen({ useAppState }) {
   const navigate = useNavigate();
   const { user, profile, signOut, updateProfile, updatePassword } = useAuth();
-  const { likes = 0, skips = 0, reasonCount = 0, styleName } = useAppState || {};
+  const { likes = 0, skips = 0, reasonCount = 0, styleName, resetTrip, pipelineDest } = useAppState || {};
 
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false);
@@ -48,6 +50,33 @@ export default function ProfileScreen({ useAppState }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwdMsg, setPwdMsg] = useState({ text: "", isError: false });
   const [savingPwd, setSavingPwd] = useState(false);
+
+  // Start over state (Q19/Q25/Q26/Q30)
+  const [startOverOpen, setStartOverOpen] = useState(false);
+  const [startOverBusy, setStartOverBusy] = useState(false);
+
+  const handleResetTripOnly = () => {
+    resetPipeline();
+    resetTrip?.();
+    setStartOverOpen(false);
+    navigate("/setup");
+  };
+
+  const handleResetEverything = async () => {
+    setStartOverBusy(true);
+    try {
+      if (user?.id) {
+        const { error } = await supabase.from("swipes").delete().eq("user_id", user.id);
+        if (error) console.warn("Failed to delete swipe history:", error.message);
+      }
+    } finally {
+      resetPipeline();
+      resetTrip?.();
+      setStartOverBusy(false);
+      setStartOverOpen(false);
+      navigate("/setup");
+    }
+  };
 
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
@@ -270,6 +299,21 @@ export default function ProfileScreen({ useAppState }) {
           </div>
         </div>
 
+        {/* Start Over (Q19/Q25) */}
+        <div className="bento-card" style={{ padding: "var(--card-pad)" }}>
+          <div className="bx-title">Trip</div>
+          <div className="bx-sub" style={{ marginTop: 2, marginBottom: 12 }}>
+            {pipelineDest ? `Current trip: ${pipelineDest}` : "Start fresh with a new destination."}
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-block"
+            onClick={() => setStartOverOpen(true)}
+          >
+            Start over
+          </button>
+        </div>
+
         {/* Sign Out Button */}
         <div style={{ padding: "4px 0 20px" }}>
           <button
@@ -282,6 +326,63 @@ export default function ProfileScreen({ useAppState }) {
           </button>
         </div>
       </div>
+
+      {/* Q26/Q30: 3-button confirm modal */}
+      {startOverOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            background: "rgba(0,0,0,0.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+          }}
+          onClick={() => !startOverBusy && setStartOverOpen(false)}
+        >
+          <div
+            className="bento-card"
+            style={{ padding: 20, maxWidth: 340, width: "100%", background: "var(--surface)" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 6px", fontSize: 17 }}>Start over?</h3>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+              Also delete your trip history from our servers? Your swipe history is used to shape future recommendations.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-block"
+                disabled={startOverBusy}
+                onClick={handleResetTripOnly}
+              >
+                Reset trip only
+              </button>
+              <button
+                type="button"
+                className="btn btn-block"
+                disabled={startOverBusy}
+                onClick={handleResetEverything}
+                style={{ background: "var(--nom, #c0392b)", color: "#fff", border: "none", borderRadius: 12, minHeight: 44, fontWeight: 700, cursor: "pointer" }}
+              >
+                {startOverBusy ? "Deleting…" : "Reset everything"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-block"
+                disabled={startOverBusy}
+                onClick={() => setStartOverOpen(false)}
+                style={{ background: "none", border: "none", color: "var(--muted)", minHeight: 36, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

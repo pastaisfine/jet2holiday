@@ -33,3 +33,9 @@ dist-ssr
 .playwright-mcp
 
 skills-lock.json
+skills.lock.json
+.supabase
+.supabase/
+supabase/.temp/
+supabase/migrations/
+migrations/

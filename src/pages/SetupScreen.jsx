@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Crown, Star } from "phosphor-react";
 import { useAuth } from "../context/useAuth";
@@ -6,6 +6,9 @@ import { FRIENDS } from "../data/members";
 import { dayCount } from "../utils/date";
 import BottomSheet from "../components/BottomSheet";
 import PreferenceForm, { EMPTY_PREFERENCES } from "../components/PreferenceForm";
+import { searchPlaces } from "../services/placesAutocomplete";
+import { createOrUpdateTrip } from "../services/tripService";
+import { resetPipeline, startPipeline } from "../services/generateTrip";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -25,7 +28,7 @@ function buildMonthGrid(year, month) {
 
 export default function SetupScreen({ useAppState }) {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const [dest, setDest] = useState("");
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -33,13 +36,18 @@ export default function SetupScreen({ useAppState }) {
   const [invited, setInvited] = useState({ ben: true, priya: true, marcus: true });
   const today = useMemo(() => { const date = new Date(); date.setHours(0, 0, 0, 0); return date; }, []);
   const [calMonth, setCalMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  const { setDest: saveDest, setDates, setLeader, startDate: savedStart, endDate: savedEnd, leader } = useAppState;
+  const { setDest: saveDest, setDates, setLeader, startDate: savedStart, endDate: savedEnd, leader, pipelineCompleted, pipelineDest } = useAppState;
   const { preferenceProfiles, savePreferenceProfile } = useAppState;
   const preferenceId = profile?.id || profile?.username || "guest";
   const [preferenceOpen, setPreferenceOpen] = useState(false);
   const [preferences, setPreferences] = useState(() => ({ ...EMPTY_PREFERENCES, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
   const [localStart, setLocalStart] = useState(() => savedStart ? new Date(savedStart) : null);
   const [localEnd, setLocalEnd] = useState(() => savedEnd ? new Date(savedEnd) : null);
+  const [destSuggestions, setDestSuggestions] = useState([]);
+  const [destSearching, setDestSearching] = useState(false);
+  const [showDestSuggestions, setShowDestSuggestions] = useState(false);
+  const destDebounceRef = useRef(null);
+  const destLocked = Boolean(pipelineCompleted && pipelineDest);
   const allMembers = useMemo(() => [{ k: "alice", n: profile?.username || "Alice", c: "#F19A6A", role: "Trip leader" }, ...FRIENDS], [profile?.username]);
   const grid = useMemo(() => buildMonthGrid(calMonth.getFullYear(), calMonth.getMonth()), [calMonth]);
   const startDate = localStart;
@@ -67,10 +75,75 @@ export default function SetupScreen({ useAppState }) {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600); }
     catch { setCopied(false); }
   };
+  const handleDestChange = (value) => {
+    setDest(value);
+    if (destDebounceRef.current) clearTimeout(destDebounceRef.current);
+    if (value.trim().length < 2) {
+      setDestSuggestions([]);
+      setShowDestSuggestions(false);
+      setDestSearching(false);
+      return;
+    }
+    destDebounceRef.current = setTimeout(async () => {
+      setDestSearching(true);
+      try {
+        const results = await searchPlaces(value);
+        setDestSuggestions(results.slice(0, 6));
+        setShowDestSuggestions(true);
+      } catch {
+        setDestSuggestions([]);
+        setShowDestSuggestions(false);
+      } finally {
+        setDestSearching(false);
+      }
+    }, 350);
+  };
+
+  const pickDestination = (suggestion) => {
+    setDest(suggestion.mainText || suggestion.description || "");
+    setDestSuggestions([]);
+    setShowDestSuggestions(false);
+  };
+
   const continueToSwipe = (skipped = false) => {
     savePreferenceProfile(preferenceId, { ...preferences, completed: !skipped, skipped });
-    saveDest(dest.trim() || "Lisbon, Portugal");
+    const finalDest = dest.trim() || "Lisbon, Portugal";
+    saveDest(finalDest);
     setPreferenceOpen(false);
+
+    // Q27c/Q34: pipeline requires an authenticated session
+    if (!session) {
+      navigate("/login", { state: { returnTo: "/setup" } });
+      return;
+    }
+
+    // Q28: persist the trip row first (fire-and-forget), then stream the pipeline.
+    createOrUpdateTrip({
+      destination: finalDest,
+      startDate: localStart,
+      endDate: localEnd,
+      leaderId: session.user.id,
+    }).catch(() => {});
+
+    useAppState.update({
+      idx: 0,
+      likes: 0,
+      skips: 0,
+      tagged: {},
+      addedCards: [],
+      pipelineCompleted: false,
+      pipelineDest: finalDest,
+      pipelineThinFallback: false,
+    });
+
+    resetPipeline();
+    startPipeline({
+      destination: finalDest,
+      startDate: localStart ? localStart.toISOString() : null,
+      endDate: localEnd ? localEnd.toISOString() : null,
+      preferences,
+    });
+
     navigate("/swipe");
   };
   const toggleDietary = (option) => setPreferences((current) => { const dietary = current.dietary || []; if (option === "None") return { ...current, dietary: dietary.includes("None") ? [] : ["None"] }; return { ...current, dietary: [...dietary.filter((item) => item !== "None"), ...(dietary.includes(option) ? [] : [option])] }; });
@@ -93,15 +166,38 @@ export default function SetupScreen({ useAppState }) {
         <label style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg)" }}>
           Destination
         </label>
-        <input
-          className="input"
-          value={dest}
-          onChange={(event) => setDest(event.target.value)}
-          placeholder="Lisbon, Portugal"
-          style={{ marginTop: 4, height: 48, borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg)", padding: "0 14px", fontSize: 15 }}
-        />
+        <div style={{ position: "relative" }}>
+          <input
+            className="input"
+            value={dest}
+            onChange={(event) => handleDestChange(event.target.value)}
+            onFocus={() => destSuggestions.length > 0 && setShowDestSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowDestSuggestions(false), 150)}
+            placeholder="e.g. Jeju, South Korea"
+            disabled={destLocked}
+            style={{ marginTop: 4, height: 48, width: "100%", borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg)", padding: "0 14px", fontSize: 15, opacity: destLocked ? 0.6 : 1 }}
+          />
+          {showDestSuggestions && destSuggestions.length > 0 && !destLocked && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", zIndex: 30, boxShadow: "0 8px 24px rgba(0,0,0,0.18)" }}>
+              {destSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.placeId}
+                  type="button"
+                  onMouseDown={(event) => { event.preventDefault(); pickDestination(suggestion); }}
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "none", border: "none", borderBottom: "1px solid var(--border)", color: "var(--fg)", fontSize: 14, cursor: "pointer" }}
+                >
+                  {suggestion.mainText || suggestion.description}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-          Trip name and recommendations adapt to your destination
+          {destLocked
+            ? `Trip generated for ${pipelineDest} — reset from Profile to start over.`
+            : destSearching
+              ? "Searching destinations…"
+              : "Search a city or region — recommendations adapt to your destination"}
         </div>
       </div>
 
@@ -252,8 +348,13 @@ export default function SetupScreen({ useAppState }) {
         )}
       </div>
 
-      <button className="btn btn-primary btn-block" style={{ marginTop: 8 }} onClick={() => setPreferenceOpen(true)}>
-        Create trip & invite group →
+      <button
+        className="btn btn-primary btn-block"
+        style={{ marginTop: 8 }}
+        onClick={() => !destLocked && setPreferenceOpen(true)}
+        disabled={destLocked}
+      >
+        {destLocked ? "Trip generated ✓" : "Create trip & invite group →"}
       </button>
 
       <BottomSheet open={preferenceOpen} onClose={() => continueToSwipe(true)} className="preference-sheet">

@@ -30,6 +30,9 @@ const DEFAULT_STATE = {
   tasks: TASKS,
   itineraryVotes: {},
   confirmedItineraryId: null,
+  pipelineCompleted: false,
+  pipelineDest: "",
+  pipelineThinFallback: false,
 };
 
 function isDefaultItinerary(id) {
@@ -277,6 +280,36 @@ export function useAppState() {
     });
   }, []);
 
+  const appendGeneratedCards = useCallback((cards) => {
+    setState((prev) => {
+      const existingIds = new Set(prev.addedCards.map((c) => c.id));
+      const fresh = cards.filter((c) => !existingIds.has(c.id));
+      if (fresh.length === 0) return prev;
+      const next = { ...prev, addedCards: [...prev.addedCards, ...fresh] };
+      save(next);
+      return next;
+    });
+  }, []);
+
+  const markPipelineCompleted = useCallback((dest) => {
+    setState((prev) => {
+      const next = { ...prev, pipelineCompleted: true, pipelineDest: dest };
+      save(next);
+      return next;
+    });
+  }, []);
+
+  const resetTrip = useCallback(() => {
+    setState((prev) => {
+      const next = {
+        ...DEFAULT_STATE,
+        tasks: prev.tasks,
+      };
+      save(next);
+      return next;
+    });
+  }, []);
+
   const savePreferenceProfile = useCallback((profileId, preferences) => {
     setState((prev) => {
       const next = { ...prev, preferenceProfiles: { ...prev.preferenceProfiles, [profileId]: preferences } };
@@ -413,6 +446,9 @@ export function useAppState() {
     markStyleSeen,
     markPlanSeen,
     appendCard,
+    appendGeneratedCards,
+    markPipelineCompleted,
+    resetTrip,
     savePreferenceProfile,
     addTasks,
     acceptTask,
