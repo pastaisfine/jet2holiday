@@ -5108,3 +5108,17 @@ button.btn-primary,
   color: var(--muted);
   margin-top: 2px;
 }
+
+[data-theme="dark"] .auth-link {
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+[data-theme="dark"] .auth-link:hover {
+  text-decoration: underline;
+}
+
+[data-theme="dark"] .auth-header .splash-mark {
+  color: var(--fg) !important;
+}
