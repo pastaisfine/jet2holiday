@@ -439,7 +439,7 @@
 .splash-copy {
   color: var(--muted);
   font-size: 15px;
-  max-width: 30ch;
+  max-width: 50ch;
 }
 
 .splash-mono {
@@ -633,7 +633,7 @@
 .preference-option.sel {
   border-color: var(--accent);
   background: var(--accent-soft);
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .preference-summary {

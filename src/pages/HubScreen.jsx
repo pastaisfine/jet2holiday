@@ -89,7 +89,7 @@ export default function HubScreen({ useAppState }) {
           pauseOnHover={false}
         />
       </div>
-      
+
       {/* Hero Section: Photo-led, compact metadata */}
       <div className="hub-hero">
         <img src="/images/miradouro-santa-luzia.jpg" alt="Lisbon" />
@@ -107,7 +107,7 @@ export default function HubScreen({ useAppState }) {
             <span style={{ background: "rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", color: "#fff", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
               {days} days
             </span>
-            <span style={{ background: "var(--accent)", color: "var(--fg)", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600 }}>
+            <span style={{ background: "var(--accent)", color: "#000000", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600 }}>
               4 friends
             </span>
           </div>
@@ -116,7 +116,7 @@ export default function HubScreen({ useAppState }) {
 
       <div className="hub-body">
 
-                {/* 5. Shared Plan Ready / Confirmed Itinerary Section */}
+        {/* 5. Shared Plan Ready / Confirmed Itinerary Section */}
         {styleSeen && !confirmedItineraryId && (
           <section style={{ ...cardStyle, background: "var(--bg)", border: "2px dashed var(--border)" }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Shared plan's ready</h3>
@@ -135,7 +135,7 @@ export default function HubScreen({ useAppState }) {
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Confirmed Itinerary</h3>
               <button style={secondaryBtnStyle} onClick={() => navigate("/plan")}>View map</button>
             </div>
-            
+
             <div style={{ marginTop: 8, display: "flex", flexDirection: "column" }}>
               {activeStops.map((stop, i) => (
                 <div key={stop.id} style={{ display: "flex", gap: 16 }}>
@@ -153,24 +153,24 @@ export default function HubScreen({ useAppState }) {
             </div>
           </section>
         )}
-        
+
         {/* 2. Your Turn Section */}
         <section style={{ ...cardStyle, background: mineDone ? "var(--surface)" : "var(--fg)", color: mineDone ? "var(--fg)" : "var(--surface)" }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>{mineDone ? "Your preferences saved" : "Your turn to swipe"}</h3>
-            <div style={{ marginTop: 6, fontSize: 14, color: mineDone ? "var(--muted)" : "rgba(255,255,255,0.8)", lineHeight: 1.4 }}>
+            <div style={{ marginTop: 6, fontSize: 14, color: mineDone ? "var(--muted)" : "var(--surface)", lineHeight: 1.4 }}>
               {mineDone
                 ? `${likes} liked, ${skips} skipped, ${reasonCount} reasons logged. We're tuning the itinerary to your taste.`
                 : "9 places, ~2 minutes. Swipe right for want, left for skip. Add a reason and the AI learns."}
             </div>
           </div>
-          
+
           {mineDone && styleSeen && (
             <div style={{ display: "inline-block", background: "var(--bg)", padding: "6px 12px", borderRadius: 8, fontSize: 13, fontWeight: 500, color: "var(--fg)", border: "1px solid var(--border)", alignSelf: "flex-start" }}>
               Style: {styleName}
             </div>
           )}
-          
+
           <button
             style={mineDone ? primaryBtnStyle : { ...primaryBtnStyle, background: "var(--surface)", color: "var(--fg)" }}
             onClick={() => {
@@ -203,7 +203,7 @@ export default function HubScreen({ useAppState }) {
               </div>
             ))}
           </div>
-          
+
           <button style={secondaryBtnStyle} onClick={() => navigate("/travel")}>
             Manage Bookings
           </button>
@@ -217,7 +217,7 @@ export default function HubScreen({ useAppState }) {
               {TASKS.filter(t => t.status === "done").length} / {TASKS.length}
             </span>
           </div>
-          
+
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {TASKS.map(task => {
               const member = MEMBERS.find(m => m.k === task.assignedTo);
@@ -225,8 +225,8 @@ export default function HubScreen({ useAppState }) {
               const isDone = task.status === "done";
               return (
                 <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0" }}>
-                  <div style={{ 
-                    width: 24, height: 24, borderRadius: "50%", 
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%",
                     border: `2px solid ${isDone ? "var(--fg)" : "var(--border)"}`,
                     background: isDone ? "var(--fg)" : "transparent",
                     display: "flex", alignItems: "center", justifyContent: "center"
@@ -244,46 +244,46 @@ export default function HubScreen({ useAppState }) {
             })}
           </div>
 
-        {/* 1. Who's Swiped Section */}
-        <section style={cardStyle}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Group alignment</h3>
-            <div style={{ fontSize: 14, color: "var(--muted)", marginTop: 4 }}>
-              {doneCount} of 4 swiped. Reveal unlocks when ready.
+          {/* 1. Who's Swiped Section */}
+          <section style={cardStyle}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Group alignment</h3>
+              <div style={{ fontSize: 14, color: "var(--muted)", marginTop: 4 }}>
+                {doneCount} of 4 swiped. Reveal unlocks when ready.
+              </div>
             </div>
-          </div>
-          
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
-            {MEMBERS.map((m) => {
-              const isUser = m.k === "alice";
-              const memberName = isUser ? (profile?.username || m.n) : m.n;
-              const finished = m.done || (isUser && mineDone);
-              return (
-                <div key={m.k} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
-                  <div style={{ 
-                    background: finished ? m.c : "var(--bg)", 
-                    border: finished ? "none" : "2px dashed var(--border)",
-                    color: finished ? "var(--surface)" : "var(--muted)",
-                    width: 52, height: 52, borderRadius: 999, fontSize: 20, 
-                    display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600 
-                  }}>
-                    {memberName.slice(0, 1).toUpperCase()}
+
+            <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+              {MEMBERS.map((m) => {
+                const isUser = m.k === "alice";
+                const memberName = isUser ? (profile?.username || m.n) : m.n;
+                const finished = m.done || (isUser && mineDone);
+                return (
+                  <div key={m.k} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
+                    <div style={{
+                      background: finished ? m.c : "var(--bg)",
+                      border: finished ? "none" : "2px dashed var(--border)",
+                      color: finished ? "var(--surface)" : "var(--muted)",
+                      width: 52, height: 52, borderRadius: 999, fontSize: 20,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600
+                    }}>
+                      {memberName.slice(0, 1).toUpperCase()}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", marginTop: 8 }}>{memberName}</span>
+                    <span style={{
+                      fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",
+                      marginTop: 4, color: finished ? "var(--fg)" : "var(--muted)",
+                      background: finished ? "var(--accent)" : "transparent",
+                      padding: "2px 6px", borderRadius: 4
+                    }}>
+                      {finished ? "Ready" : "Waiting"}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", marginTop: 8 }}>{memberName}</span>
-                  <span style={{ 
-                    fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",
-                    marginTop: 4, color: finished ? "var(--fg)" : "var(--muted)",
-                    background: finished ? "var(--accent)" : "transparent",
-                    padding: "2px 6px", borderRadius: 4
-                  }}>
-                    {finished ? "Ready" : "Waiting"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <ProgressBar value={Math.round((doneCount / 4) * 100)} height={8} color="var(--fg)" bgColor="var(--bg)" />
-        </section>
+                );
+              })}
+            </div>
+            <ProgressBar value={Math.round((doneCount / 4) * 100)} height={8} color="var(--fg)" bgColor="var(--bg)" />
+          </section>
 
         </section>
       </div>

@@ -2,15 +2,24 @@
 
 :root {
   /* ── Brand Spec Core Tokens ── */
-  --bg: oklch(98.01% 0.0172 113.8);       /* pale sage mist app canvas */
-  --bg-alt: oklch(95.5% 0.015 113.8);      /* soft sage wash */
-  --surface: oklch(98.94% 0.0119 101.5);   /* warm ivory card */
-  --surface-2: oklch(99.6% 0.008 101.5);   /* elevated ivory */
-  --fg: oklch(19.54% 0.0182 137.9);        /* near-black pine ink */
-  --muted: oklch(49.83% 0.0184 154.1);     /* softened green-gray metadata */
-  --border: oklch(90.54% 0.0172 145.4);    /* quiet sage line */
-  --accent: oklch(76.19% 0.1405 98.4);     /* sun yellow — primary signal & highlights */
-  --primary: var(--fg);                    /* primary actions are dark pine capsules */
+  --bg: oklch(98.01% 0.0172 113.8);
+  /* pale sage mist app canvas */
+  --bg-alt: oklch(95.5% 0.015 113.8);
+  /* soft sage wash */
+  --surface: oklch(98.94% 0.0119 101.5);
+  /* warm ivory card */
+  --surface-2: oklch(99.6% 0.008 101.5);
+  /* elevated ivory */
+  --fg: oklch(19.54% 0.0182 137.9);
+  /* near-black pine ink */
+  --muted: oklch(49.83% 0.0184 154.1);
+  /* softened green-gray metadata */
+  --border: oklch(90.54% 0.0172 145.4);
+  /* quiet sage line */
+  --accent: oklch(76.19% 0.1405 98.4);
+  /* sun yellow — primary signal & highlights */
+  --primary: var(--fg);
+  /* primary actions are dark pine capsules */
 
   --accent-soft: rgba(220, 180, 40, 0.16);
   --accent-deep: oklch(68% 0.15 98.4);
@@ -19,9 +28,12 @@
   --warm-soft: rgba(255, 253, 250, 0.6);
 
   /* ── semantic states (restrained swipe & status signals) ── */
-  --gerund: #3D8E74;                       /* quiet mint — consensus / yes */
-  --nom: #C85A48;                          /* softened brick — skip / no */
-  --warn: #D08A45;                         /* warm amber — split / caution */
+  --gerund: #3D8E74;
+  /* quiet mint — consensus / yes */
+  --nom: #C85A48;
+  /* softened brick — skip / no */
+  --warn: #D08A45;
+  /* warm amber — split / caution */
   --gerund-soft: rgba(61, 142, 116, 0.14);
   --nom-soft: rgba(200, 90, 72, 0.12);
   --warn-soft: rgba(208, 138, 69, 0.14);
@@ -300,8 +312,8 @@ textarea {
   min-height: 28px;
   padding: 4px 12px;
   border-radius: var(--r-pill);
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid oklch(90.54% 0.0172 145.4);
+  background: #fbfbf3;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
