@@ -1,0 +1,56 @@
+/* Hide default cursor */
+* {
+    cursor: none !important;
+}
+
+/* Plane */
+.plane-cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+
+    width: 40px;
+    height: 40px;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    font-size: 30px;
+
+    pointer-events: none;
+    z-index: 99999;
+
+    transform: translate(-10px, -10px);
+    will-change: transform;
+}
+
+/* Rainbow Sparkles */
+.sparkle {
+    position: fixed;
+
+    font-size: 12px;
+
+    pointer-events: none;
+    z-index: 99998;
+
+    animation: sparkleFade 1s forwards;
+}
+
+@keyframes sparkleFade {
+    0% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(0.3) translateY(-20px);
+    }
+}
+
+.plane-cursor img {
+    width: 45px;
+    height: 45px;
+    filter: drop-shadow(0 0 8px #00c3ff);
+}

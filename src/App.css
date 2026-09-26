@@ -439,7 +439,7 @@
 .splash-copy {
   color: var(--muted);
   font-size: 15px;
-  max-width: 30ch;
+  max-width: 50ch;
 }
 
 .splash-mono {
@@ -633,7 +633,7 @@
 .preference-option.sel {
   border-color: var(--accent);
   background: var(--accent-soft);
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .preference-summary {
@@ -5107,4 +5107,18 @@ button.btn-primary,
   font-size: 11px;
   color: var(--muted);
   margin-top: 2px;
+}
+
+[data-theme="dark"] .auth-link {
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+[data-theme="dark"] .auth-link:hover {
+  text-decoration: underline;
+}
+
+[data-theme="dark"] .auth-header .splash-mark {
+  color: var(--fg) !important;
 }

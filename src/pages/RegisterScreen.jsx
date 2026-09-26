@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
+import { AlignLeft } from "phosphor-react";
 
 export default function RegisterScreen() {
   const navigate = useNavigate();
@@ -166,6 +167,6 @@ export default function RegisterScreen() {
           </div>
         )}
       </div>
-    </section>
+    </section >
   );
 }
