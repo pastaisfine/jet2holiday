@@ -185,7 +185,7 @@ export default function PlanScreen({ useAppState }) {
     ...MODES.map((id) => ({ id, label: MODE_LABELS[id], kind: "default" })),
     ...userSuggestedItineraries,
   ];
-  const itineraries = confirmedItineraryId 
+  const itineraries = confirmedItineraryId
     ? allItineraries.filter(i => i.id === confirmedItineraryId)
     : allItineraries;
   const spiralItems = useMemo(
@@ -406,7 +406,6 @@ export default function PlanScreen({ useAppState }) {
           <div className="tl-picks">
             <div className="tl-pick"><span className="lbl">Stay</span><span className="val">{hotelPicked ? `${hotelPicked.name} · ${hotelPicked.price}` : "none picked"}</span></div>
             <div className="tl-pick"><span className="lbl">Flight</span><span className="val">{flightPicked ? `${flightPicked.name} · ${flightPicked.price}` : "none picked"}</span></div>
-            {carPicked && <div className="tl-pick"><span className="lbl">Transport</span><span className="val">{`${carPicked.name} · ${carPicked.price}`}</span></div>}
           </div>
           <button className="btn btn-primary btn-block" onClick={() => navigateAway("/travel")}>Set trip basics →</button>
         </div>

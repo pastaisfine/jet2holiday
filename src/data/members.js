@@ -6,9 +6,9 @@ export const MEMBERS = [
 ];
 
 export const FRIENDS = [
-  { k: "ben", n: "Ben", role: "Brunch authority", c: "#7EC8F2" },
-  { k: "priya", n: "Priya", role: "Culture keeper", c: "#E7A9E8" },
-  { k: "marcus", n: "Marcus", role: "Night-shift captain", c: "#F4CD8A" },
+  { k: "ben", n: "Ben", c: "#7EC8F2" },
+  { k: "priya", n: "Priya", c: "#E7A9E8" },
+  { k: "marcus", n: "Marcus",  c: "#F4CD8A" },
 ];
 
 export const AVATAR_COLORS = {

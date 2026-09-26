@@ -192,8 +192,7 @@ export default function HubScreen({ useAppState }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[
               { label: "Stay", value: hotelPicked?.name, fallback: "No accommodation picked" },
-              { label: "Flight", value: flightPicked?.name, fallback: "No outbound flight picked" },
-              { label: "Transport", value: carPicked?.name, fallback: "No transport picked" }
+              { label: "Flight", value: flightPicked?.name, fallback: "No outbound flight picked" }
             ].map((item, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "var(--bg)", borderRadius: 16 }}>
                 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--fg)" }}>{item.label}</span>

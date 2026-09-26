@@ -22,7 +22,6 @@ import TravelSearchScreen from "./pages/TravelSearchScreen";
 import TasksScreen from "./pages/TasksScreen";
 import { useAppState } from "./state/useAppState";
 import { fmtDateRange } from "./utils/date";
-import CustomCursor from "./components/CustomCursor";
 
 const CHROME = {
   "/": { header: false, tabs: false },
@@ -73,7 +72,11 @@ function Shell() {
     "/reset-password": <ResetPasswordScreen />,
   };
 
-  return <AuthProvider><CustomCursor /><div className="stage"><div className="device"><BrowserRouter><Routes>{Object.entries(CHROME).map(([path, cfg]) => <Route key={path} path={path} element={<div className={`app${cfg.tabs ? " app--sidebar" : ""}`}>{cfg.header && <AppHeader invert={cfg.invert} trip={cfg.trip || trip} back={cfg.back} backLabel={cfg.backLabel} theme={theme} toggleTheme={() => setTheme((current) => current === "dark" ? "light" : "dark")} />}{screens[path]}{cfg.tabs && <TabBar active={cfg.active} />}</div>} />)}</Routes></BrowserRouter></div></div></AuthProvider>;
+  return <AuthProvider><div className="stage"><div className="device"><BrowserRouter><Routes>{Object.entries(CHROME).map(([path, cfg]) => <Route key={path} path={path} element={<div className={`app${cfg.tabs ? " app--sidebar" : ""}`}>{cfg.header && <AppHeader invert={cfg.invert} trip={
+    ["/setup", "/login", "/register", "/forgot-password"].includes(path)
+      ? ""
+      : (cfg.trip || trip)
+  } back={cfg.back} backLabel={cfg.backLabel} theme={theme} toggleTheme={() => setTheme((current) => current === "dark" ? "light" : "dark")} />}{screens[path]}{cfg.tabs && <TabBar active={cfg.active} />}</div>} />)}</Routes></BrowserRouter></div></div></AuthProvider>;
 }
 
 export default Shell;

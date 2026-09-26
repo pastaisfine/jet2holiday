@@ -30,20 +30,6 @@ const RULES = [
   "Anyone can ask for a 15-minute reset; nobody argues",
 ];
 
-const CREDIT_BASE = [
-  "Alfama — Jorge Cancela (CC BY 2.0)",
-  "Gulbenkian gardens — Jan Helebrant (CC0)",
-  "Jardim da Estrela — GualdimG (CC BY-SA 4.0)",
-  "Lisbon rooftops — Dale Cruse (CC BY 4.0)",
-  "LX Factory mural — Dale Cruse (CC BY 4.0)",
-  "Miradouro de Santa Luzia — Jakub Halun (CC BY 4.0)",
-  "Oceanário — Bobo Boom (CC BY 2.0)",
-  "Pastel de nata — Dietmar Rabich (CC BY-SA 4.0)",
-  "Pastéis de Belém — Kim Kash (CC BY-SA 2.0)",
-  "Park rooftop — Andreas Schafer (CC BY-SA 3.0)",
-  "Time Out Market — Pedro Ribeiro Simões (CC BY 2.0)",
-];
-
 export default function GroupScreen({ useAppState }) {
   const { profile } = useAuth();
   const userName = profile?.username || "Alice";
@@ -141,10 +127,6 @@ export default function GroupScreen({ useAppState }) {
                 <li key={r}>{r}</li>
               ))}
             </ul>
-          </div>
-
-          <div className="credits" style={{ padding: "0 4px" }}>
-            <p>Photos: {CREDIT_BASE.join(" · ")}</p>
           </div>
         </div>
       </section>
