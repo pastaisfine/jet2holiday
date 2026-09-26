@@ -269,7 +269,7 @@
     z-index: 50;
     width: var(--sidebar-width);
     overflow-y: auto;
-    background: var(--surface);
+    background: var(--bg);
     border-right: 1px solid var(--border);
     backdrop-filter: saturate(180%) blur(18px);
     -webkit-backdrop-filter: saturate(180%) blur(18px);
@@ -3200,7 +3200,7 @@
   inset: 0;
   z-index: 1;
   background:
-    linear-gradient(180deg, rgba(251, 247, 240, .84) 0%, rgba(251, 247, 240, .68) 45%, rgba(251, 247, 240, .9) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 255, 255, 0.68) 45%, rgba(255, 255, 255, 0.9) 100%),
     radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(251, 247, 240, .26) 70%);
 }
 
@@ -3224,7 +3224,7 @@
 
 .spiral-screen--hub .spiral-backdrop::after {
   background:
-    linear-gradient(180deg, rgba(251, 247, 240, .74), rgba(251, 247, 240, .9)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.9)),
     radial-gradient(circle at 75% 28%, rgba(95, 185, 155, .12), transparent 38%);
 }
 
@@ -3852,7 +3852,7 @@ button.btn-primary,
   padding: 3px 9px;
   border-radius: 99px;
   background: var(--accent-soft);
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .task-empty {
@@ -4441,10 +4441,18 @@ button.btn-primary,
   flex-wrap: wrap;
 }
 
+[data-theme="dark"] .flight-quick-chips .chip.sel {
+  color: #000 !important;
+}
+
 .flight-filter-chips-row {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+[data-theme="dark"] .flight-filter-chips-row .chip.sel {
+  color: #000 !important;
 }
 
 /* Flight result cards */
