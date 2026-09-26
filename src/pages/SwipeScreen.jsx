@@ -9,6 +9,7 @@ import { useAuth } from "../context/useAuth";
 import { usePipeline } from "../services/generateTrip";
 import { supabase } from "../lib/supabase";
 import { CARD_DATA } from "../data/cards";
+import { analyzePreferences } from "../services/preference";
 
 const LISBON_FALLBACK = "Lisbon, Portugal";
 
@@ -84,6 +85,9 @@ export default function SwipeScreen({ useAppState }) {
   const preferenceId = profile?.id || profile?.username || "guest";
   const ingestedRef = useRef(0);
   const currentSwipeIdRef = useRef(null);
+  const preferenceAnalysisStartedRef = useRef(false);
+  const lastSwipePersistRef = useRef(Promise.resolve());
+  
   const [preferenceOpen, setPreferenceOpen] = useState(() => sessionStorage.getItem("edit-preferences") === "true");
   const [preferences, setPreferences] = useState(() => ({ ...emptyPreferences, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
   useEffect(() => {
@@ -149,26 +153,41 @@ export default function SwipeScreen({ useAppState }) {
   );
 
   const handleVerdict = (dir) => {
-    const card = visibleCards[idx];
-    if (!card) return;
-    const swipeId = crypto.randomUUID();
-    currentSwipeIdRef.current = swipeId;
-    swipeCard(dir);
-    persistSwipe(card, dir, null, swipeId);
-    setReasonCard(card);
-    setReasonDir(dir);
-    setReasonSel([]);
-    setReasonFree("");
-    dispatchSheets({ type: "reason" });
-  };
+  const card = visibleCards[idx];
+  if (!card) return;
+
+  const swipeId = crypto.randomUUID();
+  currentSwipeIdRef.current = swipeId;
+
+  swipeCard(dir);
+
+  persistSwipe(card, dir, null, swipeId);
+
+  setReasonCard(card);
+  setReasonDir(dir);
+  setReasonSel([]);
+  setReasonFree("");
+  dispatchSheets({ type: "reason" });
+};
 
   // Synchronous per-swipe upsert into public.swipes (fire-and-forget, never blocks UI)
-  const persistSwipe = useCallback((card, dir, reasons = null, id = null) => {
-    if (!session?.user?.id || !card) return;
-    const swipeId = id || currentSwipeIdRef.current || crypto.randomUUID();
-    const finalReasons = reasons && reasons.length > 0 ? reasons : null;
-    const finalReason = finalReasons ? finalReasons.join(", ") : null;
-    supabase
+  const persistSwipe = useCallback(
+  (card, dir, reasons = null, id = null) => {
+    if (!session?.user?.id || !card) {
+      return Promise.resolve();
+    }
+
+    const swipeId =
+      id || currentSwipeIdRef.current || crypto.randomUUID();
+
+    const finalReasons =
+      reasons && reasons.length > 0 ? reasons : null;
+
+    const finalReason = finalReasons
+      ? finalReasons.join(", ")
+      : null;
+
+    const persistPromise = supabase
       .from("swipes")
       .upsert(
         {
@@ -184,9 +203,21 @@ export default function SwipeScreen({ useAppState }) {
         { onConflict: "id" }
       )
       .then(({ error }) => {
-        if (error) console.warn("Swipe persistence failed:", error.message);
+        if (error) {
+          console.warn(
+            "Swipe persistence failed:",
+            error.message
+          );
+          throw error;
+        }
       });
-  }, [session, dest]);
+
+    lastSwipePersistRef.current = persistPromise.catch(() => {});
+
+    return persistPromise;
+  },
+  [session, dest]
+);
 
   const saveAndClose = () => {
     if (!reasonCard) {
@@ -201,6 +232,95 @@ export default function SwipeScreen({ useAppState }) {
     persistSwipe(reasonCard, reasonDir, finalReasons, currentSwipeIdRef.current);
     dispatchSheets({ type: "close" });
   };
+
+  useEffect(() => {
+  if (total === 0) return;
+  if (idx < total) return;
+  if (sheets.reason) return;
+  if (pipeline.streaming) return;
+  if (!session?.user?.id) return;
+
+  if (preferenceAnalysisStartedRef.current) return;
+
+  preferenceAnalysisStartedRef.current = true;
+
+  const runPreferenceAnalysis = async () => {
+    try {
+      // Make sure the final swipe has finished writing first.
+      await lastSwipePersistRef.current;
+
+      const destination = dest || LISBON_FALLBACK;
+
+      const { data, error } = await supabase
+        .from("swipes")
+        .select("card_name, direction, reasons")
+        .eq("user_id", session.user.id)
+        .eq("destination", destination);
+
+      if (error) {
+        throw error;
+      }
+
+      const swipes = (data || []).map((swipe) => ({
+        card_name: swipe.card_name,
+        direction: swipe.direction,
+        reasons: Array.isArray(swipe.reasons)
+          ? swipe.reasons
+          : [],
+      }));
+
+      const result = await analyzePreferences({
+        profile: {
+          username: profile?.username || "",
+          rhythm: profile?.rhythm || "",
+          density: profile?.density || "",
+          dining: profile?.dining || "",
+          foodBudget: profile?.foodBudget || "",
+          dietary: profile?.dietary || [],
+          preferenceNote: profile?.preferenceNote || "",
+          travelStyle: profile?.travelStyle || "",
+        },
+
+        initialPreferences: preferences,
+
+        destination,
+
+        swipes,
+      });
+
+      if (import.meta.env.DEV) {
+        console.log(
+          "[Preference Agent] Personal preference summary:",
+          result.summary
+        );
+      }
+
+      sessionStorage.setItem(
+        "tripder-preference-summary",
+        JSON.stringify(result.summary)
+      );
+    } catch (error) {
+      console.error(
+        "[Preference Agent] Analysis failed:",
+        error
+      );
+
+      // Allow the user to continue even if AI analysis fails.
+      preferenceAnalysisStartedRef.current = false;
+    }
+  };
+
+  runPreferenceAnalysis();
+}, [
+  idx,
+  total,
+  sheets.reason,
+  pipeline.streaming,
+  session,
+  profile,
+  preferences,
+  dest,
+]);
 
   const openDetail = (card) => {
     setDetailCard(card || (idx < total ? visibleCards[idx] : null));

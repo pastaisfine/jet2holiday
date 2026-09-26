@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export default function StyleCard({ style: { name, bars, likes, skips, reasonCount }, userName = "Alice" }) {
+export default function StyleCard({ style, userName = "Alice", interestBreakdown = [] }) {
   const [animate, setAnimate] = useState(false);
 
   useEffect(() => {
@@ -11,27 +11,33 @@ export default function StyleCard({ style: { name, bars, likes, skips, reasonCou
   return (
     <div className="stylecard card">
       <div className="st">{userName} · your travel style</div>
-      <h2>{name}</h2>
+      
+      <h2>{style?.name || "Explorer"}</h2>
+      
       <div className="who">
-        Inferred from {likes} likes, {skips} skips and {reasonCount} reasons you attached.
+        {style?.tagline || "Your travel personality is inferred from your swipe decisions."}
       </div>
+      
       <div className="trait">
-        {bars.map((b) => (
-          <div key={b.l}>
+        {interestBreakdown.map((b) => (
+          <div key={b.name}>
             <div className="row">
-              <b>{b.l}</b>
-              <span className="v">{b.v}%</span>
+              <b>{b.name}</b>
+              <span className="v">{b.percent}%</span>
             </div>
             <div className="bar">
-              <i style={animate ? { width: `${b.v}%` } : { width: 0 }} />
+              <i style={animate ? { width: `${b.percent}%` } : { width: 0 }} />
             </div>
           </div>
         ))}
       </div>
+      
       <div className="chipsline">
-        <span className="chip tag-ok">Pace · relaxed</span>
-        <span className="chip">Dealbreaker · queues</span>
-        <span className="chip">Budget · mid</span>
+        {style?.pace && <span className="chip tag-ok">Pace · {style.pace}</span>}
+        {style?.budget && <span className="chip">Budget · {style.budget}</span>}
+        {style?.dining && style.dining !== "No preference" && (
+          <span className="chip">Dining · {style.dining}</span>
+        )}
       </div>
     </div>
   );
