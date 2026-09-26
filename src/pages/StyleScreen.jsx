@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { computeStyle } from "../data/styles";
@@ -12,10 +12,74 @@ export default function StyleScreen({ useAppState }) {
   const { likes, skips, reasonCount, tagged, markStyleSeen, allCards, preferenceProfiles } = useAppState;
   const preferences = preferenceProfiles?.[profile?.id || profile?.username || "guest"];
 
-  const style = useMemo(
-    () => computeStyle(tagged, likes, skips, reasonCount),
-    [likes, skips, reasonCount, tagged],
-  );
+  const [aiSummary, setAiSummary] = useState(() => {
+      try {
+        const stored = sessionStorage.getItem("tripder-preference-summary");
+        return stored ? JSON.parse(stored) : {};
+      } catch {
+        return {};
+      }
+    });
+
+  useEffect(() => {
+      try {
+        const stored = sessionStorage.getItem("tripder-preference-summary");
+        if (stored) {
+          setAiSummary(JSON.parse(stored));
+        }
+      } catch (error) {
+        console.error("Failed to parse sessionStorage:", error);
+      }
+    }, []);
+
+ const style = useMemo(() => ({
+    name: aiSummary.styleName || "Curious Explorer",
+    tagline:
+      aiSummary.tagline ||
+      "Your travel personality is inferred from your swipe decisions",
+    pace: aiSummary.pace || "Balanced",
+    dining: aiSummary.diningPreference || "No preference",
+    budget: aiSummary.budgetPreference || "Flexible",
+    dietary: aiSummary.dietaryConstraints || [],
+    interests: aiSummary.interests || [],
+    reasoning: aiSummary.reasoningInsights || [],
+  }), [aiSummary]);
+
+  //calculate percentage
+  const interestBreakdown = useMemo(() => {
+    const buckets = {
+      "Food & Markets": 0,
+      "Scenic Views": 0,
+      Culture: 0,
+      "Nature & Relaxation": 0,
+      Nightlife: 0,
+    };
+
+  const mapInterest = (text = "") => {
+    const t = text.toLowerCase();
+
+    if (t.includes("food") || t.includes("market")) return "Food & Markets";
+    if (t.includes("view") || t.includes("rooftop")) return "Scenic Views";
+    if (t.includes("culture") || t.includes("museum")) return "Culture";
+    if (t.includes("nature") || t.includes("park") || t.includes("green"))
+      return "Nature & Relaxation";
+    if (t.includes("night")) return "Nightlife";
+
+    return null;
+  };
+
+  (style.interests || []).forEach((interest) => {
+    const bucket = mapInterest(interest);
+    if (bucket) buckets[bucket] += 1;
+  });
+
+  const total = Object.values(buckets).reduce((a, b) => a + b, 0) || 1;
+
+  return Object.entries(buckets).map(([name, value]) => ({
+    name,
+    percent: Math.round((value / total) * 100),
+  }));
+}, [style.interests]);
 
   useEffect(() => {
     markStyleSeen(style.name);
@@ -64,7 +128,7 @@ export default function StyleScreen({ useAppState }) {
             </h1>
           </div>
 
-          <StyleCard style={style} userName={userName} />
+          <StyleCard style={style} userName={userName} interestBreakdown={interestBreakdown} />
 
           {preferences && (preferences.completed || preferences.skipped) && (
             <div className="bento-card" style={{ padding: 20 }}>
