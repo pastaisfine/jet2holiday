@@ -3,7 +3,7 @@
 :root {
   /* ── Brand Spec Core Tokens ── */
   --bg: oklch(100% 0.00011 271.152);
-  /* pale sage mist app canvas */
+  /* pure white app canvas */
   --bg-alt: oklch(95.5% 0.015 113.8);
   /* soft sage wash */
   --surface: oklch(98.94% 0.0119 101.5);
@@ -24,6 +24,8 @@
   --accent-soft: rgba(220, 180, 40, 0.16);
   --accent-deep: oklch(68% 0.15 98.4);
   --accent-ink: var(--fg);
+  /* theme-independent: ink always sits on photography, never on a themed surface */
+  --on-photo: #fff;
   --warm: var(--surface);
   --warm-soft: rgba(255, 253, 250, 0.6);
 
@@ -312,8 +314,8 @@ textarea {
   min-height: 28px;
   padding: 4px 12px;
   border-radius: var(--r-pill);
-  border: 1px solid oklch(90.54% 0.0172 145.4);
-  background: #fbfbf3;
+  border: 1px solid var(--border);
+  background: var(--surface);
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
@@ -556,7 +558,7 @@ textarea {
   font-weight: 600;
   letter-spacing: .08em;
   text-transform: uppercase;
-  color: var(--accent-ink);
+  color: var(--fg);
   border: 1px solid var(--border);
   border-radius: var(--r-pill);
   padding: 5px 11px;
@@ -579,7 +581,7 @@ textarea {
 }
 
 .bento-card.accent .styleline .tag {
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .bento-card.accent .progressbar {

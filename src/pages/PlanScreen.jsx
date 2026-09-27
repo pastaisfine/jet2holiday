@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { DragDropProvider, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable } from "@dnd-kit/react";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { PLAN, ROUTE_LEGS } from "../data/plans";
-import { HOTELS, FLIGHTS, CAR_RENTALS } from "../data/travel";
+import { HOTELS, FLIGHTS } from "../data/travel";
 import BottomSheet from "../components/BottomSheet";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { searchPlaces } from "../services/placesAutocomplete";
@@ -114,7 +114,6 @@ export default function PlanScreen({ useAppState }) {
     markPlanSeen,
     hotel,
     flight,
-    carRental,
     startDate,
     endDate,
     activeItinerary,
@@ -179,7 +178,6 @@ export default function PlanScreen({ useAppState }) {
   const plan = PLAN[baseMode] || PLAN.balanced;
   const hotelPicked = typeof hotel === "object" && hotel ? hotel : HOTELS.find((h) => h.id === hotel);
   const flightPicked = typeof flight === "object" && flight ? flight : FLIGHTS.find((f) => f.id === flight);
-  const carPicked = typeof carRental === "object" && carRental ? carRental : CAR_RENTALS.find((c) => c.id === carRental);
 
   const allItineraries = [
     ...MODES.map((id) => ({ id, label: MODE_LABELS[id], kind: "default" })),

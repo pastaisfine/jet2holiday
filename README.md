@@ -174,6 +174,12 @@ This makes the Edge Function the main **security boundary** between the browser 
 **System architecture diagram**
 ![Architecture Diagram](./images/Architecture_diagram.png)
 
+**Contributing / repo conventions:**
+Design tokens and colour rules live in [brand-spec.md](./brand-spec.md), and the current
+system layout lives in [ARCHITECTURE.md](./ARCHITECTURE.md). Run `npm run lint` before
+committing — beyond oxlint it enforces the brand token discipline and fails on any *new*
+lint warning. Photography attribution is in [CREDITS.md](./CREDITS.md).
+
 
 **Build plan & scope:**
 

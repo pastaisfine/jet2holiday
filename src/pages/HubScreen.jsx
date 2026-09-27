@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { MEMBERS, AVATAR_COLORS } from "../data/members";
 import { TASKS } from "../data/tasks";
-import { HOTELS, FLIGHTS, CAR_RENTALS } from "../data/travel";
+import { HOTELS, FLIGHTS } from "../data/travel";
 import ProgressBar from "../components/ProgressBar";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { fmtDateRange, dayCount } from "../utils/date";
@@ -13,12 +13,11 @@ export default function HubScreen({ useAppState }) {
   const { profile } = useAuth();
   const {
     likes, skips, reasonCount, styleSeen, styleName, dest, startDate, endDate, activeStops,
-    hotel, flight, carRental, confirmedItineraryId
+    hotel, flight, confirmedItineraryId
   } = useAppState;
 
   const hotelPicked = typeof hotel === "object" && hotel ? hotel : HOTELS.find((h) => h.id === hotel);
   const flightPicked = typeof flight === "object" && flight ? flight : FLIGHTS.find((f) => f.id === flight);
-  const carPicked = typeof carRental === "object" && carRental ? carRental : CAR_RENTALS.find((c) => c.id === carRental);
 
   const mineDone = likes + skips > 0;
   const doneCount = 3 + (mineDone ? 1 : 0);
@@ -95,19 +94,19 @@ export default function HubScreen({ useAppState }) {
         <img src="/images/miradouro-santa-luzia.jpg" alt="Lisbon" />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 60%)" }} />
         <div style={{ position: "absolute", bottom: 20, left: 20, right: 20 }}>
-          <h2 style={{ color: "#fff", margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em", textShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
+          <h2 style={{ color: "var(--on-photo)", margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em", textShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
             {dest || "Lisbon, Portugal"}
           </h2>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             {dateRange && (
-              <span style={{ background: "rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", color: "#fff", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
+              <span style={{ background: "rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", color: "var(--on-photo)", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
                 {dateRange}
               </span>
             )}
-            <span style={{ background: "rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", color: "#fff", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
+            <span style={{ background: "rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", color: "var(--on-photo)", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
               {days} days
             </span>
-            <span style={{ background: "var(--accent)", color: "#000000", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600 }}>
+            <span style={{ background: "var(--accent)", color: "var(--accent-ink)", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600 }}>
               4 friends
             </span>
           </div>

@@ -48,7 +48,7 @@ export default function SetupScreen({ useAppState }) {
   const [showDestSuggestions, setShowDestSuggestions] = useState(false);
   const destDebounceRef = useRef(null);
   const destLocked = Boolean(pipelineCompleted && pipelineDest);
-  const allMembers = useMemo(() => [{ k: "alice", n: profile?.username || "Alice", c: "#F19A6A", role: "Trip leader" }, ...FRIENDS], [profile?.username]);
+  const allMembers = useMemo(() => [{ k: "alice", n: profile?.username || "Alice", c: "#F19A6A" }, ...FRIENDS], [profile?.username]);
   const grid = useMemo(() => buildMonthGrid(calMonth.getFullYear(), calMonth.getMonth()), [calMonth]);
   const startDate = localStart;
   const endDate = localEnd;

@@ -125,7 +125,7 @@
 }
 
 .appheader .hd-back:hover {
-  color: var(--accent-ink);
+  color: var(--fg);
   border-color: var(--accent);
   background: var(--accent-soft);
 }
@@ -544,7 +544,7 @@
   font-size: 9.5px;
   letter-spacing: .12em;
   text-transform: uppercase;
-  color: var(--accent-ink);
+  color: var(--fg);
   font-weight: 600;
 }
 
@@ -779,7 +779,7 @@
 
 .cal-day.in-range {
   background: var(--accent-soft);
-  color: var(--accent-ink);
+  color: var(--fg);
   border-radius: 0;
 }
 
@@ -802,7 +802,7 @@
 }
 
 .cal-clear:hover {
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .friends {
@@ -948,7 +948,7 @@
   background: var(--accent-soft);
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--accent-ink);
+  color: var(--fg);
   font-family: var(--font-mono);
   cursor: pointer;
   text-align: left;
@@ -1488,7 +1488,7 @@
 .swipe-tally {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--accent-ink);
+  color: var(--fg);
   background: var(--accent-soft);
   border: 1px solid rgba(238, 127, 101, .3);
   padding: 6px 11px;
@@ -2230,7 +2230,7 @@
   font-size: 9.5px;
   letter-spacing: .13em;
   text-transform: uppercase;
-  color: var(--accent-ink);
+  color: var(--fg);
   font-weight: 700;
 }
 
@@ -2640,7 +2640,7 @@
 .why-note summary::after {
   content: '+';
   font-size: 15px;
-  color: var(--accent-ink);
+  color: var(--fg);
   font-weight: 700;
   width: 24px;
   height: 24px;
@@ -2675,7 +2675,7 @@
 
 .why-note .bullets .kw {
   font-weight: 700;
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 @media (min-width: 900px) {
@@ -2916,7 +2916,7 @@
 }
 
 .auth-link {
-  color: var(--accent-ink);
+  color: var(--fg);
   font-weight: 600;
   text-decoration: none;
 }
@@ -2967,7 +2967,7 @@
 
 .appheader .hd-login-link:hover {
   border-color: var(--accent);
-  color: var(--accent-ink);
+  color: var(--fg);
   background: var(--accent-soft);
 }
 
@@ -3487,7 +3487,7 @@ button.btn-primary,
   margin-top: 7px;
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .plan-error {
@@ -4250,31 +4250,35 @@ button.btn-primary,
   outline: none;
 }
 
-.passenger-spinner {
-  display: flex;
-  flex-direction: column;
-  margin-left: 4px;
-}
-
-.passenger-spinner button {
-  border: none;
+.flight-dropdown-pill .flight-passengers-stepper,
+.stay-guests-pill .stay-guests-stepper {
+  width: 2ch;
+  padding: 5px 0;
+  border: 0;
   background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0;
-  width: 8px;
-  height: 10px;
-  line-height: 1;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
 }
 
-.passenger-spinner button:hover {
+/* The native number spinners duplicate the +/- controls the JSX already renders. */
+.flight-dropdown-pill .flight-passengers-stepper::-webkit-outer-spin-button,
+.flight-dropdown-pill .flight-passengers-stepper::-webkit-inner-spin-button,
+.stay-guests-pill .stay-guests-stepper::-webkit-outer-spin-button,
+.stay-guests-pill .stay-guests-stepper::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.flight-dropdown-pill .flight-passengers-label,
+.stay-guests-pill .stay-guests-label {
+  font-size: 10.5px;
   color: var(--fg);
 }
-
 .flight-inputs-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -4441,18 +4445,10 @@ button.btn-primary,
   flex-wrap: wrap;
 }
 
-[data-theme="dark"] .flight-quick-chips .chip.sel {
-  color: #000 !important;
-}
-
 .flight-filter-chips-row {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
-}
-
-[data-theme="dark"] .flight-filter-chips-row .chip.sel {
-  color: #000 !important;
 }
 
 /* Flight result cards */
@@ -4756,31 +4752,6 @@ button.btn-primary,
   font-weight: 500;
   cursor: pointer;
   outline: none;
-}
-
-.guest-spinner {
-  display: flex;
-  flex-direction: column;
-  margin-left: 4px;
-}
-
-.guest-spinner button {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0;
-  width: 8px;
-  height: 10px;
-  line-height: 1;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.guest-spinner button:hover {
-  color: var(--fg);
 }
 
 .stay-search-submit-btn {
@@ -5168,8 +5139,4 @@ button.btn-primary,
 
 [data-theme="dark"] .auth-link:hover {
   text-decoration: underline;
-}
-
-[data-theme="dark"] .auth-header .splash-mark {
-  color: var(--fg) !important;
 }

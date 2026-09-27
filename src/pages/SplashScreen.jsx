@@ -27,7 +27,7 @@ export default function SplashScreen() {
       {/* Top Brand Header */}
       <div style={{ position: "relative", zIndex: 2, padding: "28px 24px 0" }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255, 255, 255, 0.2)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", padding: "6px 14px", borderRadius: 999, border: "1px solid rgba(255, 255, 255, 0.3)" }}>
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, color: "#fff", letterSpacing: "-0.02em" }}>
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, color: "var(--on-photo)", letterSpacing: "-0.02em" }}>
             Trip<b style={{ color: "var(--accent)" }}>der</b>
           </span>
           <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--accent)" }} />

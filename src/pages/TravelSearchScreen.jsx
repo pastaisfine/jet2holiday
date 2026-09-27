@@ -6,7 +6,6 @@ import {
   House,
   MagnifyingGlass,
   ArrowsLeftRight,
-  CaretDown,
   CaretLeft,
   CaretRight,
   SlidersHorizontal,

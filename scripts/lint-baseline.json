@@ -1,0 +1,41 @@
+{
+  "_comment": "Pre-existing oxlint warnings, as file -> rule -> count. `behaviourRisk` warnings may indicate real runtime bugs (cascading renders, stale closures) and are deliberately deferred, not overlooked. `cosmetic` is unused imports/variables. The goal is an empty file - shrink it as debt is paid.",
+  "behaviourRisk": {
+    "src/components/BottomSheet.jsx": {
+      "react(set-state-in-effect)": 1
+    },
+    "src/pages/StyleScreen.jsx": {
+      "react(set-state-in-effect)": 1
+    },
+    "src/context/AuthContext.jsx": {
+      "react(set-state-in-effect)": 1
+    },
+    "src/pages/PlanScreen.jsx": {
+      "react(set-state-in-effect)": 1
+    },
+    "src/pages/SwipeScreen.jsx": {
+      "react(set-state-in-effect)": 1
+    },
+    "src/pages/TravelSearchScreen.jsx": {
+      "react(set-state-in-effect)": 2,
+      "react-hooks(exhaustive-deps)": 1
+    }
+  },
+  "cosmetic": {
+    "supabase/functions/task-agent/index.ts": {
+      "eslint(no-unused-vars)": 3
+    },
+    "src/services/taskAgent.js": {
+      "eslint(no-unused-vars)": 2
+    },
+    "src/pages/RegisterScreen.jsx": {
+      "eslint(no-unused-vars)": 1
+    },
+    "src/pages/StyleScreen.jsx": {
+      "eslint(no-unused-vars)": 5
+    },
+    "src/components/PreferenceForm.jsx": {
+      "react(only-export-components)": 1
+    }
+  }
+}
