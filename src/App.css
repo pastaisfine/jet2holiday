@@ -139,11 +139,11 @@
 }
 
 .appheader.invert .hd-mark {
-  color: #fff;
+  color: var(--fg) !important;
 }
 
 .appheader.invert .hd-mark b {
-  color: var(--peach);
+  color: var(--accent);
 }
 
 .appheader.invert .hd-trip {
@@ -269,7 +269,7 @@
     z-index: 50;
     width: var(--sidebar-width);
     overflow-y: auto;
-    background: var(--surface);
+    background: var(--bg);
     border-right: 1px solid var(--border);
     backdrop-filter: saturate(180%) blur(18px);
     -webkit-backdrop-filter: saturate(180%) blur(18px);
@@ -2515,6 +2515,8 @@
 }
 
 .stop {
+  width: 99.5%;
+  margin-left: auto;
   position: relative;
   padding: 10px 12px;
   transition: border-color .16s ease, box-shadow .16s ease;
@@ -2846,17 +2848,6 @@
 
 .notes li::marker {
   color: var(--accent);
-}
-
-.credits {
-  padding: 4px 20px 8px;
-}
-
-.credits p {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  line-height: 1.6;
-  color: var(--muted);
 }
 
 @media (min-width: 900px) {
@@ -3192,7 +3183,7 @@
 }
 
 .spiral-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
@@ -3209,7 +3200,7 @@
   inset: 0;
   z-index: 1;
   background:
-    linear-gradient(180deg, rgba(251, 247, 240, .84) 0%, rgba(251, 247, 240, .68) 45%, rgba(251, 247, 240, .9) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 255, 255, 0.68) 45%, rgba(255, 255, 255, 0.9) 100%),
     radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(251, 247, 240, .26) 70%);
 }
 
@@ -3233,7 +3224,7 @@
 
 .spiral-screen--hub .spiral-backdrop::after {
   background:
-    linear-gradient(180deg, rgba(251, 247, 240, .74), rgba(251, 247, 240, .9)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.9)),
     radial-gradient(circle at 75% 28%, rgba(95, 185, 155, .12), transparent 38%);
 }
 
@@ -3861,7 +3852,7 @@ button.btn-primary,
   padding: 3px 9px;
   border-radius: 99px;
   background: var(--accent-soft);
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .task-empty {
@@ -4184,10 +4175,11 @@ button.btn-primary,
 .travel-currency-wrap {
   display: flex;
   align-items: center;
+  gap: 3px;
 }
 
 .travel-currency-select {
-  padding: 6px 12px;
+  padding: 6px 20px 6px 5px;
   border-radius: var(--r-pill);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -4248,6 +4240,7 @@ button.btn-primary,
 }
 
 .flight-dropdown-pill select {
+  padding: 5px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -4255,6 +4248,31 @@ button.btn-primary,
   font-weight: 500;
   cursor: pointer;
   outline: none;
+}
+
+.passenger-spinner {
+  display: flex;
+  flex-direction: column;
+  margin-left: 4px;
+}
+
+.passenger-spinner button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  width: 8px;
+  height: 10px;
+  line-height: 1;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.passenger-spinner button:hover {
+  color: var(--fg);
 }
 
 .flight-inputs-grid {
@@ -4423,10 +4441,18 @@ button.btn-primary,
   flex-wrap: wrap;
 }
 
+[data-theme="dark"] .flight-quick-chips .chip.sel {
+  color: #000 !important;
+}
+
 .flight-filter-chips-row {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+[data-theme="dark"] .flight-filter-chips-row .chip.sel {
+  color: #000 !important;
 }
 
 /* Flight result cards */
@@ -4730,6 +4756,31 @@ button.btn-primary,
   font-weight: 500;
   cursor: pointer;
   outline: none;
+}
+
+.guest-spinner {
+  display: flex;
+  flex-direction: column;
+  margin-left: 4px;
+}
+
+.guest-spinner button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  width: 8px;
+  height: 10px;
+  line-height: 1;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guest-spinner button:hover {
+  color: var(--fg);
 }
 
 .stay-search-submit-btn {

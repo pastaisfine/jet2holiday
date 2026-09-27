@@ -123,7 +123,7 @@ export default function SetupScreen({ useAppState }) {
       startDate: localStart,
       endDate: localEnd,
       leaderId: session.user.id,
-    }).catch(() => {});
+    }).catch(() => { });
 
     useAppState.update({
       idx: 0,
@@ -303,11 +303,13 @@ export default function SetupScreen({ useAppState }) {
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>
                     {friend.n} {friend.k === "alice" && <span style={{ fontSize: 10, background: "var(--fg)", color: "var(--surface)", padding: "2px 6px", borderRadius: 999, marginLeft: 4 }}>you</span>}
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--muted)" }}>{friend.role}</div>
+                  {isLead && (
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>Trip leader</div>
+                  )}
                 </div>
 
                 {isLead && <Crown size={18} weight="fill" color="var(--accent)" title="Trip leader" />}
-                {friend.k !== "alice" && (
+                {isSel && (
                   <button
                     style={{ background: "none", border: "none", color: isLead ? "var(--accent)" : "var(--border)", cursor: "pointer", padding: 4 }}
                     title="Make trip leader"

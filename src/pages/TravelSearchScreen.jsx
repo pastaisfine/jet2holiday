@@ -58,7 +58,7 @@ function formatDisplayDate(dateStr, fallback = "Select date") {
     if (!isNaN(d.getTime())) {
       return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
     }
-  } catch {}
+  } catch { }
   return dateStr || fallback;
 }
 
@@ -154,10 +154,10 @@ export default function TravelSearchScreen({ useAppState }) {
           activeHotelFilter === "pool"
             ? "pool"
             : activeHotelFilter === "wifi"
-            ? "wi-fi"
-            : activeHotelFilter === "fitness"
-            ? "fitness"
-            : null,
+              ? "wi-fi"
+              : activeHotelFilter === "fitness"
+                ? "fitness"
+                : null,
       });
       setHotels(data);
     } catch {
@@ -226,7 +226,7 @@ export default function TravelSearchScreen({ useAppState }) {
       const d = new Date(currentDate);
       d.setDate(d.getDate() + days);
       setter(d.toISOString().split("T")[0]);
-    } catch {}
+    } catch { }
   };
 
   const toggleBookmark = (id) => {
@@ -297,18 +297,25 @@ export default function TravelSearchScreen({ useAppState }) {
                   <option value="round">Round trip</option>
                   <option value="oneway">One way</option>
                 </select>
-                <CaretDown size={14} />
               </div>
 
               <div className="flight-dropdown-pill">
                 <Users size={14} />
-                <select value={passengers} onChange={(e) => setPassengers(Number(e.target.value))}>
-                  <option value={1}>1 passenger</option>
-                  <option value={2}>2 passengers</option>
-                  <option value={3}>3 passengers</option>
-                  <option value={4}>4+ passengers</option>
-                </select>
-                <CaretDown size={14} />
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={passengers}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setPassengers(Math.min(20, Math.max(1, value || 1)));
+                  }}
+                  className="flight-passengers-stepper"
+                />
+
+                <span className="flight-passengers-label">
+                  {passengers === 1 ? "passenger" : "passengers"}
+                </span>
               </div>
 
               <div className="flight-dropdown-pill">
@@ -318,7 +325,6 @@ export default function TravelSearchScreen({ useAppState }) {
                   <option value="Business">Business</option>
                   <option value="First">First</option>
                 </select>
-                <CaretDown size={14} />
               </div>
             </div>
 
@@ -636,13 +642,21 @@ export default function TravelSearchScreen({ useAppState }) {
 
               <div className="stay-guests-pill">
                 <Users size={14} />
-                <select value={guests} onChange={(e) => setGuests(Number(e.target.value))}>
-                  <option value={1}>1 guest</option>
-                  <option value={2}>2 guests</option>
-                  <option value={3}>3 guests</option>
-                  <option value={4}>4+ guests</option>
-                </select>
-                <CaretDown size={14} />
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={guests}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setGuests(Math.min(20, Math.max(1, value || 1)));
+                  }}
+                  className="stay-guests-stepper"
+                />
+
+                <span className="stay-guests-label">
+                  {guests === 1 ? "guest" : "guests"}
+                </span>
               </div>
 
               <button
@@ -888,13 +902,21 @@ export default function TravelSearchScreen({ useAppState }) {
 
               <div className="stay-guests-pill">
                 <Users size={14} />
-                <select value={guests} onChange={(e) => setGuests(Number(e.target.value))}>
-                  <option value={1}>1 guest</option>
-                  <option value={2}>2 guests</option>
-                  <option value={3}>3 guests</option>
-                  <option value={4}>4+ guests</option>
-                </select>
-                <CaretDown size={14} />
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={guests}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setGuests(Math.min(20, Math.max(1, value || 1)));
+                  }}
+                  className="stay-guests-stepper"
+                />
+
+                <span className="stay-guests-label">
+                  {guests === 1 ? "guest" : "guests"}
+                </span>
               </div>
 
               <button
