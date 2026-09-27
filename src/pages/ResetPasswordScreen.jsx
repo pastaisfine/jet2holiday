@@ -73,13 +73,13 @@ export default function ResetPasswordScreen() {
       <div className="auth-wrap">
         <div className="auth-header">
           <div className="splash-mark" style={{ fontSize: 28, marginBottom: 4 }}>
-            Trip<b>der</b>
+            jet2<b>holiday</b>
           </div>
           <h1 className="h-display" style={{ fontSize: 24, margin: "0 0 6px" }}>
             Set a new password
           </h1>
           <p className="splash-copy" style={{ fontSize: 13.5, margin: 0, color: "var(--muted)", maxWidth: "none" }}>
-            Choose a strong password for your Tripder account.
+            Choose a strong password for your jet2holiday account.
           </p>
         </div>
 

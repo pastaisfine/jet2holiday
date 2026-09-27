@@ -28,7 +28,7 @@ function ProfileDetailsForm({ profile, updateProfile }) {
   return (
     <div className="bento-card" style={{ padding: "var(--card-pad)" }}>
       <div className="bx-title">Account Details</div>
-      <div className="bx-sub" style={{ marginTop: 2, marginBottom: 14 }}>Manage how other group members see you in Tripder.</div>
+      <div className="bx-sub" style={{ marginTop: 2, marginBottom: 14 }}>Manage how other group members see you in jet2holiday.</div>
       {profileMsg.text && <div className={`auth-alert ${profileMsg.isError ? "auth-alert-error" : "auth-alert-success"}`} style={{ marginBottom: 14 }}><span>{profileMsg.text}</span></div>}
       <form onSubmit={handleUpdateProfile}>
         <div className="field"><label htmlFor="prof-username">Display Name / Username</label><input id="prof-username" className="input" type="text" value={usernameInput} onChange={(event) => setUsernameInput(event.target.value)} placeholder="e.g. Alex" /></div>
@@ -122,7 +122,7 @@ export default function ProfileScreen({ useAppState }) {
             <h1 className="h-display" style={{ fontSize: 26, margin: "0 0 6px" }}>
               Profile
             </h1>
-            <p className="eyebrow">Your Tripder account &amp; preferences</p>
+            <p className="eyebrow">Your jet2holiday account &amp; preferences</p>
           </div>
 
           <div className="bento-card" style={{ padding: "var(--card-pad)", textAlign: "center" }}>
@@ -174,7 +174,7 @@ export default function ProfileScreen({ useAppState }) {
           <h1 className="h-display" style={{ fontSize: 26, margin: "0 0 6px" }}>
             Profile
           </h1>
-          <p className="eyebrow">Your Tripder account &amp; preferences</p>
+          <p className="eyebrow">Your jet2holiday account &amp; preferences</p>
         </div>
 
         {/* User Card */}
@@ -284,7 +284,7 @@ export default function ProfileScreen({ useAppState }) {
 
         {/* Travel Persona & Swiping Stats */}
         <div className="bento-card" style={{ padding: "var(--card-pad)" }}>
-          <div className="bx-title">Tripder Activity</div>
+          <div className="bx-title">jet2holiday Activity</div>
           <div className="bx-sub" style={{ marginTop: 2, marginBottom: 12 }}>
             Your current trip voting and persona signals.
           </div>

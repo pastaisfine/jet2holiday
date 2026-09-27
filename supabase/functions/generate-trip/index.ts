@@ -115,7 +115,7 @@ Deno.serve(async (req: Request) => {
           ? Math.max(1, Math.round((new Date(body.endDate).getTime() - new Date(body.startDate).getTime()) / 86400000))
           : null;
 
-        const systemInstruction = `You are the Tripder Itinerary Agent. Your ONLY job: given a travel destination, return a JSON array of the best places to visit there.
+        const systemInstruction = `You are the jet2holiday Itinerary Agent. Your ONLY job: given a travel destination, return a JSON array of the best places to visit there.
 Output format: [{"name":"Place name","category":"one of: ${CATEGORIES.join(", ")}"}]
 Rules:
 - Return between 6 and 19 locations. Pick the count based on how much the destination offers (a small town → ~6, a world city → ~15).

@@ -1,10 +1,10 @@
-# Tripder — Project Architecture
+# jet2holiday — Project Architecture
 
 ## Project Overview
 
-**Tripder** is a collaborative travel planning web app built with React + Vite. Inspired by swipe-style interfaces (think dating apps), it lets groups plan trips together by swiping on places and activities — but crucially, it also captures the *reasoning* behind each preference, enabling genuine group consensus instead of majority-rules domination.
+**jet2holiday** is a collaborative travel planning web app built with React + Vite. Inspired by swipe-style interfaces (think dating apps), it lets groups plan trips together by swiping on places and activities — but crucially, it also captures the *reasoning* behind each preference, enabling genuine group consensus instead of majority-rules domination.
 
-**Key differentiator:** Instead of just aggregating a group's "yes/no" votes, Tripder surfaces the *why* behind every swipe, making negotiation and itinerary compromise transparent and fair.
+**Key differentiator:** Instead of just aggregating a group's "yes/no" votes, jet2holiday surfaces the *why* behind every swipe, making negotiation and itinerary compromise transparent and fair.
 
 ---
 

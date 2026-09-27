@@ -59,14 +59,14 @@ export default function RegisterScreen() {
       <div className="auth-wrap">
         <div className="auth-header">
           <div className="splash-mark" style={{ fontSize: 28, marginBottom: 4 }}>
-            Trip<b>der</b>
+            jet2<b>holiday</b>
           </div>
           <h1 className="h-display" style={{ fontSize: 24, margin: "0 0 6px" }}>
             {verifySentEmail ? "Verify your email" : "Create your account"}
           </h1>
           <p className="splash-copy" style={{ fontSize: 13.5, margin: 0, color: "var(--muted)" }}>
             {verifySentEmail
-              ? "One quick step to activate your Tripder account."
+              ? "One quick step to activate your jet2holiday account."
               : "Save your preferences and plan group trips with zero compromise."}
           </p>
         </div>

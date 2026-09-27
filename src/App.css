@@ -124,10 +124,18 @@
   flex: 0 0 auto;
 }
 
+[data-theme="dark"] .appheader .hd-back {
+  color: #fff;
+}
+
 .appheader .hd-back:hover {
   color: var(--fg);
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+[data-theme="dark"] .appheader .hd-back:hover {
+  color: #fff;
 }
 
 /* photo-backed screens: header floats over imagery */
@@ -2965,21 +2973,35 @@
   transition: border-color .15s ease, background .15s ease, color .15s ease;
 }
 
+[data-theme="dark"] .appheader .hd-login-link {
+  color: #fff;
+}
+
 .appheader .hd-login-link:hover {
   border-color: var(--accent);
   color: var(--fg);
   background: var(--accent-soft);
 }
 
-.appheader.invert .hd-login-link {
+[data-theme="dark"] .appheader .hd-login-link:hover {
   color: #fff;
-  background: rgba(255, 255, 255, .18);
-  border-color: rgba(255, 255, 255, .3);
+}
+
+.appheader.invert .hd-login-link {
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
 }
 
 .appheader.invert .hd-login-link:hover {
-  background: rgba(255, 255, 255, .3);
-  border-color: rgba(255, 255, 255, .5);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+
+[data-theme="dark"] .appheader.invert .hd-login-link:hover {
+  color: #fff;
 }
 
 .appheader .hd-user-btn {
@@ -3395,7 +3417,7 @@ button.btn-primary,
   color: #FFFDFA !important;
 }
 
-/* Lock "Tripder" brand logo title back to dark chocolate on the splash screen */
+/* Lock "jet2holiday" brand logo title back to dark chocolate on the splash screen */
 [data-theme="dark"] div[class*="splash"] .brand,
 [data-theme="dark"] div[class*="splash"] h1.logo,
 [data-theme="dark"] div[class*="splash"] .hd-mark {
@@ -4202,15 +4224,6 @@ button.btn-primary,
   box-shadow: var(--shadow);
 }
 
-.flight-hero-title {
-  position: relative;
-  z-index: 2;
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  margin: 0;
-  color: #fff;
-}
 
 .flight-search-container {
   padding: 16px;
