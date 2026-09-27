@@ -39,7 +39,7 @@ export default function ForgotPasswordScreen() {
       <div className="auth-wrap">
         <div className="auth-header">
           <div className="splash-mark" style={{ fontSize: 28, marginBottom: 4 }}>
-            Trip<b>der</b>
+            jet2<b>holiday</b>
           </div>
           <h1 className="h-display" style={{ fontSize: 24, margin: "0 0 6px" }}>
             Reset your password

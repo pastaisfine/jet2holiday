@@ -50,7 +50,7 @@ export default function DoneScreen({ useAppState }) {
         </div>
         <div style={{ fontSize: 13.5, color: "var(--muted)", lineHeight: 1.55 }}>
           Your feedback tunes an individual style profile. When the rest of your crew completes their swipes,
-          Tripder synthesizes a consensus schedule where every person is at least 75% satisfied.
+          jet2holiday synthesizes a consensus schedule where every person is at least 75% satisfied.
         </div>
       </div>
 

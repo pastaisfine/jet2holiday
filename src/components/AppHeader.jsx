@@ -10,7 +10,7 @@ export default function AppHeader({ trip, back, backLabel, invert, theme, toggle
     <header className={`appheader ${invert ? "invert" : ""}`}>
       <div className="hd-left">
         {back && <Link to={back} className="hd-back">‹ {backLabel || "Back"}</Link>}
-        <Link to="/hub" className="hd-mark">Trip<b>der</b></Link>
+        <Link to="/hub" className="hd-mark">jet2<b>holiday</b></Link>
         {trip && <span className="hd-trip">{trip}</span>}
       </div>
       <div className="hd-right">

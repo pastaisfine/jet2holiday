@@ -282,11 +282,6 @@ export default function TravelSearchScreen({ useAppState }) {
       {/* ========================================================================= */}
       {activeTab === "flights" && (
         <div className="travel-tab-content">
-          {/* Header Banner */}
-          <div className="flight-hero-card">
-            <div className="flight-hero-graphic" />
-            <h1 className="flight-hero-title">Flights</h1>
-          </div>
 
           {/* Search Controls Form */}
           <div className="bento-card flight-search-container">
@@ -438,7 +433,7 @@ export default function TravelSearchScreen({ useAppState }) {
               <h3>Find cheap flights from {origin} to anywhere</h3>
             </div>
             <div className="flight-quick-chips">
-              {["Penang", "Federal Territory of Kuala Lumpur", "Kota Kinabalu", "Kuching", "Singapore", "Lisbon"].map(
+              {["Penang", "Federal Territory of Kuala Lumpur", "Kota Kinabalu", "Kuching", "Labuan", "Terengganu", "Perak", "Pahang", "Malacca", "Kelantan", "Kedah", "Johor"].map(
                 (city) => (
                   <button
                     key={city}
@@ -783,7 +778,7 @@ export default function TravelSearchScreen({ useAppState }) {
                     className="btn btn-primary stay-cta-btn"
                     onClick={() => handleSelectHotel(hotel)}
                   >
-                    View prices
+                    Select
                   </button>
                 </div>
               </div>
@@ -1045,7 +1040,7 @@ export default function TravelSearchScreen({ useAppState }) {
                     className="btn btn-primary stay-cta-btn"
                     onClick={() => handleSelectRental(rental)}
                   >
-                    View details
+                    Select
                   </button>
                 </div>
               </div>
