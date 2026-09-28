@@ -168,8 +168,8 @@ export default function TravelScreen({ useAppState }) {
             {!hotelPicked && !flightPicked
               ? "Select both a stay and a flight to proceed"
               : !hotelPicked
-              ? "Almost ready: pick a stay to continue"
-              : "Almost ready: pick a flight to continue"}
+                ? "Almost ready: pick a stay to continue"
+                : "Almost ready: pick a flight to continue"}
           </span>
         </div>
       )}

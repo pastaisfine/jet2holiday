@@ -1254,6 +1254,69 @@
   text-align: right;
 }
 
+.tl-pick {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.tl-pick .lbl {
+  font-weight: 600;
+}
+
+.tl-pick .val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-now-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px 12px;
+
+  background: #ececec;
+  border: 1px solid #666;
+
+  border-radius: 8px;
+
+  color: #444;
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.book-now-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px 12px;
+
+  background: #ececec;
+  border: 1px solid #666;
+  border-radius: 8px;
+
+  color: #444;
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.book-now-btn svg {
+  flex-shrink: 0;
+}
+
+.book-now-btn:hover {
+  background: #e0e0e0;
+}
+
 @media (min-width: 900px) {
   .screen-travel {
     width: 100%;
@@ -3725,6 +3788,31 @@ button.btn-primary,
   font-weight: 700;
 }
 
+.save-pdf-btn {
+  margin-top: 12px;
+  padding: 5px 16px;
+
+  border-radius: 14px;
+
+  background: #e8e8e8;
+  border: 1px solid #666;
+
+  color: #333;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: fit-content;
+}
+
+.save-pdf-btn:hover {
+  opacity: 0.9;
+}
+
 @media (min-width: 900px) {
   .route-leg {
     margin-left: 68px;
@@ -4263,6 +4351,62 @@ button.btn-primary,
   outline: none;
 }
 
+
+.flight-dropdown-pill select option {
+  color: #000;
+  background: #fff;
+}
+
+.passenger-count-wrap {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.stepper-value {
+  min-width: 12px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.vertical-stepper {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.stepper-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  width: 10px;
+  height: 10px;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.stepper-btn:hover {
+  opacity: 0.7;
+}
+
+.flight-dropdown-pill .flight-passengers-stepper,
+.stay-guests-pill .stay-guests-stepper {
+  width: 2ch;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+=======
 .flight-dropdown-pill .flight-passengers-stepper,
 .stay-guests-pill .stay-guests-stepper {
   width: 2ch;
@@ -4458,12 +4602,26 @@ button.btn-primary,
   flex-wrap: wrap;
 }
 
+<<<<<<< HEAD
+[data-theme="dark"] .flight-quick-chips .chip.sel {
+  color: #000000 !important;
+}
+
+=======
+>>>>>>> e1905d3718fe551009889439f949c9e7b20562b2
 .flight-filter-chips-row {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
 }
 
+<<<<<<< HEAD
+[data-theme="dark"] .flight-filter-chips-row .chip.sel {
+  color: #000000 !important;
+}
+
+=======
+>>>>>>> e1905d3718fe551009889439f949c9e7b20562b2
 /* Flight result cards */
 .flight-results-list {
   display: grid;
@@ -5083,6 +5241,29 @@ button.btn-primary,
   white-space: nowrap;
 }
 
+.stay-google-btn {
+  width: 100%;
+  margin-bottom: 8px;
+
+  padding: 8px 10px;
+
+  border: 1px solid var(--border);
+  border-radius: 999px;
+
+  background: var(--surface);
+  color: var(--fg);
+
+  font-size: 12px;
+  font-weight: 600;
+
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stay-google-btn:hover {
+  background: var(--bg-soft);
+}
+
 /* Vacation Rentals Sponsored Carousel */
 .rentals-sponsored-section {
   margin-bottom: 20px;
@@ -5152,4 +5333,8 @@ button.btn-primary,
 
 [data-theme="dark"] .auth-link:hover {
   text-decoration: underline;
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> e1905d3718fe551009889439f949c9e7b20562b2

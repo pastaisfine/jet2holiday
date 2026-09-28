@@ -7,6 +7,9 @@ import { HOTELS, FLIGHTS } from "../data/travel";
 import ProgressBar from "../components/ProgressBar";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { fmtDateRange, dayCount } from "../utils/date";
+import { ArrowSquareOut } from "@phosphor-icons/react";
+
+
 
 export default function HubScreen({ useAppState }) {
   const navigate = useNavigate();
@@ -18,6 +21,53 @@ export default function HubScreen({ useAppState }) {
 
   const hotelPicked = typeof hotel === "object" && hotel ? hotel : HOTELS.find((h) => h.id === hotel);
   const flightPicked = typeof flight === "object" && flight ? flight : FLIGHTS.find((f) => f.id === flight);
+
+  const getShortHotelName = (name) => {
+    if (!name) return "";
+
+    const lower = name.toLowerCase();
+
+    if (lower.startsWith("costa mahkota")) {
+      return "Costa Mahkota";
+    }
+
+    if (lower.startsWith("doubletree")) {
+      return "DoubleTree";
+    }
+
+    if (lower.startsWith("casa del rio")) {
+      return "Casa Del Rio";
+    }
+
+    if (lower.startsWith("holiday inn")) {
+      return "Holiday Inn";
+    }
+
+    if (lower.startsWith("swiss-garden")) {
+      return "Swiss-Garden";
+    }
+
+    // Default: first 2 words
+    return name.split(" ").slice(0, 2).join(" ");
+  };
+
+  const getHotelBookingUrl = (hotelName) => {
+    if (!hotelName) return "#";
+
+    return `https://www.google.com/travel/search?q=${encodeURIComponent(
+      hotelName
+    )}`;
+  };
+
+
+  const getFlightBookingUrl = (flightName) => {
+    if (!flightName) return "#";
+
+    return `https://www.google.com/travel/flights?q=${encodeURIComponent(
+      flightName
+    )}`;
+  };
+
 
   const mineDone = likes + skips > 0;
   const doneCount = 3 + (mineDone ? 1 : 0);
@@ -190,14 +240,89 @@ export default function HubScreen({ useAppState }) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[
-              { label: "Stay", value: hotelPicked?.name, fallback: "No accommodation picked" },
-              { label: "Flight", value: flightPicked?.name, fallback: "No outbound flight picked" }
+              {
+                label: "Stay",
+                value: getShortHotelName(hotelPicked?.name),
+                fallback: "No accommodation picked"
+              },
+              {
+                label: "Flight",
+                value: flightPicked?.name,
+                fallback: "No outbound flight picked"
+              }
             ].map((item, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "var(--bg)", borderRadius: 16 }}>
-                <span style={{ fontSize: 14, fontWeight: 500, color: "var(--fg)" }}>{item.label}</span>
-                <span style={{ fontSize: 14, color: item.value ? "var(--fg)" : "var(--muted)", fontWeight: item.value ? 500 : 400 }}>
-                  {item.value || item.fallback}
+
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  padding: "20px 16px",
+                  background: "var(--bg)",
+                  borderRadius: 16
+                }}
+              >
+                {/* Left side */}
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 500,
+                    color: "var(--fg)"
+                  }}
+                >
+                  {item.label}
                 </span>
+
+                {/* Right side */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-end",
+                    gap: 10
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 14,
+                      color: item.value ? "var(--fg)" : "var(--muted)",
+                      fontWeight: item.value ? 500 : 400
+                    }}
+                  >
+                    {item.value || item.fallback}
+                  </span>
+
+                  {(
+                    <button
+                      onClick={() => {
+                        const url =
+                          item.label === "Stay"
+                            ? getHotelBookingUrl(hotelPicked?.name)
+                            : getFlightBookingUrl(flightPicked?.name);
+
+
+                        window.open(url, "_blank");
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "6px 12px",
+                        background: "#e5e5e5",
+                        border: "1px solid #666",
+                        borderRadius: 8,
+                        color: "#555",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      <ArrowSquareOut size={14} />
+                      {item.label === "Stay" ? "Book now!" : "Book now!"}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -206,6 +331,7 @@ export default function HubScreen({ useAppState }) {
             Manage Bookings
           </button>
         </section>
+
 
         {/* 4. Tasks Section */}
         <section style={cardStyle}>
