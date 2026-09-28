@@ -4351,6 +4351,7 @@ button.btn-primary,
   outline: none;
 }
 
+
 .flight-dropdown-pill select option {
   color: #000;
   background: #fff;
@@ -4405,6 +4406,22 @@ button.btn-primary,
   -moz-appearance: textfield;
 }
 
+=======
+.flight-dropdown-pill .flight-passengers-stepper,
+.stay-guests-pill .stay-guests-stepper {
+  width: 2ch;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
 /* The native number spinners duplicate the +/- controls the JSX already renders. */
 .flight-dropdown-pill .flight-passengers-stepper::-webkit-outer-spin-button,
 .flight-dropdown-pill .flight-passengers-stepper::-webkit-inner-spin-button,
@@ -4419,7 +4436,6 @@ button.btn-primary,
   font-size: 10.5px;
   color: var(--fg);
 }
-
 .flight-inputs-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -4586,20 +4602,26 @@ button.btn-primary,
   flex-wrap: wrap;
 }
 
+<<<<<<< HEAD
 [data-theme="dark"] .flight-quick-chips .chip.sel {
   color: #000000 !important;
 }
 
+=======
+>>>>>>> e1905d3718fe551009889439f949c9e7b20562b2
 .flight-filter-chips-row {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
 }
 
+<<<<<<< HEAD
 [data-theme="dark"] .flight-filter-chips-row .chip.sel {
   color: #000000 !important;
 }
 
+=======
+>>>>>>> e1905d3718fe551009889439f949c9e7b20562b2
 /* Flight result cards */
 .flight-results-list {
   display: grid;
@@ -5311,4 +5333,8 @@ button.btn-primary,
 
 [data-theme="dark"] .auth-link:hover {
   text-decoration: underline;
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> e1905d3718fe551009889439f949c9e7b20562b2

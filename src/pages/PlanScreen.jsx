@@ -181,6 +181,7 @@ export default function PlanScreen({ useAppState }) {
   const hotelPicked = typeof hotel === "object" && hotel ? hotel : HOTELS.find((h) => h.id === hotel);
   const flightPicked = typeof flight === "object" && flight ? flight : FLIGHTS.find((f) => f.id === flight);
 
+
   const getShortHotelName = (name) => {
     if (!name) return "";
 
