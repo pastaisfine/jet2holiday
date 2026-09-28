@@ -124,7 +124,7 @@ export default function StyleScreen({ useAppState }) {
               <span>Inferred Taste Profile</span>
             </div>
             <h1 style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 800, color: "var(--fg)", letterSpacing: "-0.03em" }}>
-              Travel style: {userName}
+              Travel style: 
             </h1>
           </div>
 

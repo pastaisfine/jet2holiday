@@ -87,9 +87,85 @@ export default function SwipeScreen({ useAppState }) {
   const currentSwipeIdRef = useRef(null);
   const preferenceAnalysisStartedRef = useRef(false);
   const lastSwipePersistRef = useRef(Promise.resolve());
-  
+
   const [preferenceOpen, setPreferenceOpen] = useState(() => sessionStorage.getItem("edit-preferences") === "true");
+  const [preferenceAnalysisStatus, setPreferenceAnalysisStatus] =
+  useState("idle");
+
   const [preferences, setPreferences] = useState(() => ({ ...emptyPreferences, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
+
+  const runPreferenceAnalysis = useCallback(async () => {
+  setPreferenceAnalysisStatus("loading");
+
+  try {
+    await lastSwipePersistRef.current;
+
+    const destination = dest || LISBON_FALLBACK;
+
+    const { data, error } = await supabase
+      .from("swipes")
+      .select("card_name, direction, reasons")
+      .eq("user_id", session.user.id)
+      .eq("destination", destination);
+
+    if (error) {
+      throw error;
+    }
+
+    const swipes = (data || []).map((swipe) => ({
+      card_name: swipe.card_name,
+      direction: swipe.direction,
+      reasons: Array.isArray(swipe.reasons)
+        ? swipe.reasons
+        : [],
+    }));
+
+    const result = await analyzePreferences({
+      profile: {
+        username: profile?.username || "",
+        rhythm: profile?.rhythm || "",
+        density: profile?.density || "",
+        dining: profile?.dining || "",
+        foodBudget: profile?.foodBudget || "",
+        dietary: profile?.dietary || [],
+        preferenceNote: profile?.preferenceNote || "",
+        travelStyle: profile?.travelStyle || "",
+      },
+      initialPreferences: preferences,
+      destination,
+      swipes,
+    });
+
+    if (import.meta.env.DEV) {
+      console.log(
+        "[Preference Agent] Personal preference summary:",
+        result.summary
+      );
+    }
+
+    sessionStorage.setItem(
+      "tripder-preference-summary",
+      JSON.stringify(result.summary)
+    );
+
+    setPreferenceAnalysisStatus("success");
+  } catch (error) {
+    console.error(
+      "[Preference Agent] Analysis failed:",
+      error
+    );
+
+    preferenceAnalysisStartedRef.current = false;
+    setPreferenceAnalysisStatus("error");
+  }
+}, [
+  session,
+  profile,
+  preferences,
+  dest,
+]);
+
+
   useEffect(() => {
     const saved = preferenceProfiles?.[preferenceId];
     if (saved) setPreferences({ ...emptyPreferences, ...saved, dietary: saved.dietary || [] });
@@ -233,82 +309,15 @@ export default function SwipeScreen({ useAppState }) {
     dispatchSheets({ type: "close" });
   };
 
-  useEffect(() => {
+useEffect(() => {
   if (total === 0) return;
   if (idx < total) return;
   if (sheets.reason) return;
   if (pipeline.streaming) return;
   if (!session?.user?.id) return;
-
   if (preferenceAnalysisStartedRef.current) return;
 
   preferenceAnalysisStartedRef.current = true;
-
-  const runPreferenceAnalysis = async () => {
-    try {
-      // Make sure the final swipe has finished writing first.
-      await lastSwipePersistRef.current;
-
-      const destination = dest || LISBON_FALLBACK;
-
-      const { data, error } = await supabase
-        .from("swipes")
-        .select("card_name, direction, reasons")
-        .eq("user_id", session.user.id)
-        .eq("destination", destination);
-
-      if (error) {
-        throw error;
-      }
-
-      const swipes = (data || []).map((swipe) => ({
-        card_name: swipe.card_name,
-        direction: swipe.direction,
-        reasons: Array.isArray(swipe.reasons)
-          ? swipe.reasons
-          : [],
-      }));
-
-      const result = await analyzePreferences({
-        profile: {
-          username: profile?.username || "",
-          rhythm: profile?.rhythm || "",
-          density: profile?.density || "",
-          dining: profile?.dining || "",
-          foodBudget: profile?.foodBudget || "",
-          dietary: profile?.dietary || [],
-          preferenceNote: profile?.preferenceNote || "",
-          travelStyle: profile?.travelStyle || "",
-        },
-
-        initialPreferences: preferences,
-
-        destination,
-
-        swipes,
-      });
-
-      if (import.meta.env.DEV) {
-        console.log(
-          "[Preference Agent] Personal preference summary:",
-          result.summary
-        );
-      }
-
-      sessionStorage.setItem(
-        "tripder-preference-summary",
-        JSON.stringify(result.summary)
-      );
-    } catch (error) {
-      console.error(
-        "[Preference Agent] Analysis failed:",
-        error
-      );
-
-      // Allow the user to continue even if AI analysis fails.
-      preferenceAnalysisStartedRef.current = false;
-    }
-  };
 
   runPreferenceAnalysis();
 }, [
@@ -317,9 +326,7 @@ export default function SwipeScreen({ useAppState }) {
   sheets.reason,
   pipeline.streaming,
   session,
-  profile,
-  preferences,
-  dest,
+  runPreferenceAnalysis,
 ]);
 
   const openDetail = (card) => {
@@ -449,9 +456,31 @@ return (
                   <p className="splash-copy" style={{ textAlign: "center" }}>
                     {likes} likes, {skips} skips and every reason is now a weighted signal — not just a tick box.
                   </p>
-                  <button className="btn btn-primary" onClick={() => navigate("/style")}>
-                    See my summary
+
+                 <button
+                    className="btn btn-primary"
+                    disabled={preferenceAnalysisStatus !== "success"}
+                    onClick={() => navigate("/style")}
+                  >
+                    {preferenceAnalysisStatus === "loading"
+                      ? "Analysing your choices…"
+                      : preferenceAnalysisStatus === "success"
+                        ? "See my summary"
+                        : "Preparing your summary…"}
                   </button>
+
+                 {preferenceAnalysisStatus === "error" && (
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        preferenceAnalysisStartedRef.current = true;
+                        runPreferenceAnalysis();
+                      }}
+                    >
+                      Try again
+                    </button>
+                  )}
+
                   <button className="btn btn-secondary" style={{ marginTop: 8 }} onClick={() => dispatchSheets({ type: "addPlace" })}>
                     More itineraries on your mind?
                   </button>
