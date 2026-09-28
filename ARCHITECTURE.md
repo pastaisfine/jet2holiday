@@ -56,6 +56,7 @@ graph TD
             Group["GroupScreen\n(Group members)"]
             Tasks["TasksScreen\n(Task board)"]
             Travel["TravelScreen\n(In-trip view +\nMapbox map)"]
+            TravelSearch["TravelSearchScreen\n(Flights / stays /\nrentals search)"]
             Profile["ProfileScreen\n(User settings)"]
         end
 
@@ -63,6 +64,7 @@ graph TD
             AppHeader
             TabBar
             SwipeCard
+            RequireAuth
             InfiniteSpiral["InfiniteSpiral\n(Animated history)"]
             LineSidebar["LineSidebar\n(Plan timeline)"]
             PreferenceForm
@@ -76,6 +78,10 @@ graph TD
             PlacesSvc["placesAutocomplete.js\n(Proxy call)"]
             MapboxSvc["mapbox.js\n(Directions API)"]
             TaskAgentSvc["taskAgent.js\n(AI task parser)"]
+            TravelSearchSvc["travelSearch.js\n(Flights / stays /\nrentals search)"]
+            TripSvc["tripService.js\n(Trip persistence)"]
+            TripGenSvc["generateTrip.js\n(Itinerary generation)"]
+            PrefSvc["preference.js\n(Preference agent)"]
         end
 
         subgraph Lib["Lib (src/lib/)"]
@@ -87,6 +93,7 @@ graph TD
             PlansData["plans.js\n(3 preset itineraries:\nbalanced, foodfirst, slower)"]
             StylesData["styles.js\n(Travel style profiles)"]
             MembersData["members.js\n(Mock group members)"]
+            TasksData["tasks.js\n(Mock task board)"]
             TravelData["travel.js\n(Flights, hotels, car rentals)"]
         end
 
@@ -128,21 +135,35 @@ graph TD
     %% Pages use components
     Pages --> Components
 
-    %% Pages use data
-    SwipeScreen --> CardsData
-    PlanScreen --> PlansData
-    StyleScreen --> StylesData
-    GroupScreen --> MembersData
-    TravelScreen --> TravelData
-    SetupScreen --> PlacesSvc
+    %% Pages use static data
+    Swipe --> CardsData
+    Plan --> PlansData
+    Style --> StylesData
+    Setup --> MembersData
+    Hub --> MembersData
+    Hub --> TasksData
+    Plan --> TravelData
+    Hub --> TravelData
+    Travel --> TravelData
+
+    %% Pages use services
+    Setup --> PlacesSvc
+    Setup --> TripSvc
+    Setup --> TripGenSvc
+    Swipe --> PlacesSvc
+    Swipe --> PrefSvc
+    Swipe --> TripGenSvc
+    Plan --> PlacesSvc
+    Plan --> MapboxSvc
+    Tasks --> TaskAgentSvc
+    TravelSearch --> TravelSearchSvc
+    Profile --> TripGenSvc
 
     %% Services
+    TravelSearchSvc --> TravelData
     PlacesSvc -- "POST /places-autocomplete" --> PlacesFn
     TaskAgentSvc -- "POST /task-agent" --> TaskFn
-    Travel --> MapboxSvc
-    PlanScreen --> MapboxSvc
     MapboxSvc --> MapboxAPI
-    TasksScreen --> TaskAgentSvc
 
     %% Edge function → external
     PlacesFn --> SerpApi
@@ -180,7 +201,7 @@ WhereDo/
 │   ├── App.jsx                   # Shell: router, layout chrome, theme
 │   ├── App.css / index.css       # Global styles + design tokens
 │   │
-│   ├── pages/                    # Screen-level route components (15 screens)
+│   ├── pages/                    # Screen-level route components (16 screens)
 │   │   ├── SplashScreen.jsx      # Landing / onboarding
 │   │   ├── LoginScreen.jsx
 │   │   ├── RegisterScreen.jsx
@@ -195,14 +216,18 @@ WhereDo/
 │   │   ├── GroupScreen.jsx       # Group member management
 │   │   ├── TasksScreen.jsx       # AI-powered task board
 │   │   ├── TravelScreen.jsx      # In-trip logistics + Mapbox map
+│   │   ├── TravelSearchScreen.jsx# Flights / stays / rentals search
 │   │   └── ProfileScreen.jsx     # User profile & auth settings
 │   │
-│   ├── components/               # Reusable UI components (12 files)
+│   ├── components/               # Reusable UI components (11 JSX + 2 CSS)
 │   │   ├── AppHeader.jsx         # Top nav bar
 │   │   ├── TabBar.jsx            # Bottom tab navigation
 │   │   ├── SwipeCard.jsx         # Individual swipeable card
+│   │   ├── RequireAuth.jsx       # Auth route guard
 │   │   ├── InfiniteSpiral.jsx    # Animated swipe history visualization
+│   │   ├── InfiniteSpiral.css
 │   │   ├── LineSidebar.jsx       # Timeline sidebar for plan view
+│   │   ├── LineSidebar.css
 │   │   ├── PreferenceForm.jsx    # Swipe reason capture form
 │   │   ├── ReasonChips.jsx       # Tag chips for swipe reasons
 │   │   ├── StyleCard.jsx         # Travel style option card
@@ -220,7 +245,11 @@ WhereDo/
 │   ├── services/
 │   │   ├── placesAutocomplete.js # Calls places-autocomplete edge function
 │   │   ├── mapbox.js             # Calls Mapbox Directions API
-│   │   └── taskAgent.js          # Calls task-agent edge function (Gemini AI)
+│   │   ├── taskAgent.js          # Calls task-agent edge function (Gemini AI)
+│   │   ├── travelSearch.js       # Flights / stays / rentals search
+│   │   ├── tripService.js        # Trip persistence
+│   │   ├── generateTrip.js       # Itinerary generation
+│   │   └── preference.js         # Preference agent
 │   │
 │   ├── lib/
 │   │   └── supabase.js           # Supabase client initialization
@@ -230,10 +259,17 @@ WhereDo/
 │   │   ├── plans.js              # 3 preset itineraries + route legs
 │   │   ├── styles.js             # Travel style personas
 │   │   ├── members.js            # Mock group member profiles
+│   │   ├── tasks.js              # Mock task board
 │   │   └── travel.js             # Mock flights, hotels, car rentals
 │   │
 │   └── utils/
 │       └── date.js               # Date range formatting
+│
+├── scripts/                      # Repo guards, run via `npm run lint`
+│   ├── check-colors.mjs          # brand-spec.md token discipline
+│   ├── check-lint-warnings.mjs   # Fails on NEW oxlint warnings
+│   ├── color-baseline.json       # Known pre-existing raw colour literals
+│   └── lint-baseline.json        # Known pre-existing oxlint warnings
 │
 ├── supabase/
 │   └── functions/

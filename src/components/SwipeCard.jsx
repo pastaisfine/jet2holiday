@@ -45,8 +45,8 @@ export default function SwipeCard({ card, onVerdict, onDetail, stacked }) {
         <motion.div className="sw-verdict no" style={stacked === 0 ? { opacity: noOpacity } : {}}>SKIP</motion.div>
         <motion.div className="sw-verdict yes" style={stacked === 0 ? { opacity: yesOpacity } : {}}>GO</motion.div>
       </div>
-      <div className="body" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 1, background: "transparent", color: "#fff", padding: "20px" }}>
-        <div className="pname" style={{ position: "relative", bottom: 0, left: 0, right: 0, color: "#fff", marginBottom: "12px" }}>
+      <div className="body" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 1, background: "transparent", color: "var(--on-photo)", padding: "20px" }}>
+        <div className="pname" style={{ position: "relative", bottom: 0, left: 0, right: 0, color: "var(--on-photo)", marginBottom: "12px" }}>
           <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "28px", letterSpacing: "-0.02em", textShadow: "0 2px 12px rgba(29, 44, 26, 0.6)" }}>{card.name}</h2>
           <div className="area" style={{ fontFamily: "var(--font-mono)", fontSize: "11px", letterSpacing: "0.11em", textTransform: "uppercase", opacity: 0.9, marginTop: "6px" }}>{card.area}</div>
         </div>
@@ -59,7 +59,7 @@ export default function SwipeCard({ card, onVerdict, onDetail, stacked }) {
 const chipInline = {
   background: "rgba(255,255,255,.22)",
   borderColor: "rgba(255,255,255,.34)",
-  color: "#fff",
+  color: "var(--on-photo)",
   backdropFilter: "blur(8px)",
   WebkitBackdropFilter: "blur(8px)",
   fontWeight: 600,

@@ -366,7 +366,7 @@ export default function ProfileScreen({ useAppState }) {
                 className="btn btn-block"
                 disabled={startOverBusy}
                 onClick={handleResetEverything}
-                style={{ background: "var(--nom, #c0392b)", color: "#fff", border: "none", borderRadius: 12, minHeight: 44, fontWeight: 700, cursor: "pointer" }}
+                style={{ background: "var(--nom)", color: "var(--surface)", border: "none", borderRadius: 12, minHeight: 44, fontWeight: 700, cursor: "pointer" }}
               >
                 {startOverBusy ? "Deleting…" : "Reset everything"}
               </button>

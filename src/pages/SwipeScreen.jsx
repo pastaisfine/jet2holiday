@@ -662,7 +662,7 @@ return (
               </>
             )}
             {pipeline.error && !pipeline.streaming && (
-              <div style={{ color: "var(--nom, #c0392b)" }}>Couldn't generate spots — using fallback deck.</div>
+              <div style={{ color: "var(--nom)" }}>Couldn't generate spots — using fallback deck.</div>
             )}
           </div>
         )}

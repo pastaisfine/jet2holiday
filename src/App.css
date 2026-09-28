@@ -129,7 +129,7 @@
 }
 
 .appheader .hd-back:hover {
-  color: var(--accent-ink);
+  color: var(--fg);
   border-color: var(--accent);
   background: var(--accent-soft);
 }
@@ -552,7 +552,7 @@
   font-size: 9.5px;
   letter-spacing: .12em;
   text-transform: uppercase;
-  color: var(--accent-ink);
+  color: var(--fg);
   font-weight: 600;
 }
 
@@ -787,7 +787,7 @@
 
 .cal-day.in-range {
   background: var(--accent-soft);
-  color: var(--accent-ink);
+  color: var(--fg);
   border-radius: 0;
 }
 
@@ -810,7 +810,7 @@
 }
 
 .cal-clear:hover {
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .friends {
@@ -956,7 +956,7 @@
   background: var(--accent-soft);
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--accent-ink);
+  color: var(--fg);
   font-family: var(--font-mono);
   cursor: pointer;
   text-align: left;
@@ -1254,6 +1254,69 @@
   text-align: right;
 }
 
+.tl-pick {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.tl-pick .lbl {
+  font-weight: 600;
+}
+
+.tl-pick .val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-now-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px 12px;
+
+  background: #ececec;
+  border: 1px solid #666;
+
+  border-radius: 8px;
+
+  color: #444;
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.book-now-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px 12px;
+
+  background: #ececec;
+  border: 1px solid #666;
+  border-radius: 8px;
+
+  color: #444;
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.book-now-btn svg {
+  flex-shrink: 0;
+}
+
+.book-now-btn:hover {
+  background: #e0e0e0;
+}
+
 @media (min-width: 900px) {
   .screen-travel {
     width: 100%;
@@ -1496,7 +1559,7 @@
 .swipe-tally {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--accent-ink);
+  color: var(--fg);
   background: var(--accent-soft);
   border: 1px solid rgba(238, 127, 101, .3);
   padding: 6px 11px;
@@ -2238,7 +2301,7 @@
   font-size: 9.5px;
   letter-spacing: .13em;
   text-transform: uppercase;
-  color: var(--accent-ink);
+  color: var(--fg);
   font-weight: 700;
 }
 
@@ -2648,7 +2711,7 @@
 .why-note summary::after {
   content: '+';
   font-size: 15px;
-  color: var(--accent-ink);
+  color: var(--fg);
   font-weight: 700;
   width: 24px;
   height: 24px;
@@ -2683,7 +2746,7 @@
 
 .why-note .bullets .kw {
   font-weight: 700;
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 @media (min-width: 900px) {
@@ -2924,7 +2987,7 @@
 }
 
 .auth-link {
-  color: var(--accent-ink);
+  color: var(--fg);
   font-weight: 600;
   text-decoration: none;
 }
@@ -2979,7 +3042,7 @@
 
 .appheader .hd-login-link:hover {
   border-color: var(--accent);
-  color: var(--accent-ink);
+  color: var(--fg);
   background: var(--accent-soft);
 }
 
@@ -3509,7 +3572,7 @@ button.btn-primary,
   margin-top: 7px;
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--accent-ink);
+  color: var(--fg);
 }
 
 .plan-error {
@@ -3723,6 +3786,31 @@ button.btn-primary,
   color: #fff;
   cursor: pointer;
   font-weight: 700;
+}
+
+.save-pdf-btn {
+  margin-top: 12px;
+  padding: 5px 16px;
+
+  border-radius: 14px;
+
+  background: #e8e8e8;
+  border: 1px solid #666;
+
+  color: #333;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: fit-content;
+}
+
+.save-pdf-btn:hover {
+  opacity: 0.9;
 }
 
 @media (min-width: 900px) {
@@ -4263,28 +4351,72 @@ button.btn-primary,
   outline: none;
 }
 
-.passenger-spinner {
-  display: flex;
-  flex-direction: column;
-  margin-left: 4px;
+.flight-dropdown-pill select option {
+  color: #000;
+  background: #fff;
 }
 
-.passenger-spinner button {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0;
-  width: 8px;
-  height: 10px;
-  line-height: 1;
-  font-size: 10px;
+.passenger-count-wrap {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 3px;
 }
 
-.passenger-spinner button:hover {
+.stepper-value {
+  min-width: 12px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.vertical-stepper {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.stepper-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  width: 10px;
+  height: 10px;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.stepper-btn:hover {
+  opacity: 0.7;
+}
+
+.flight-dropdown-pill .flight-passengers-stepper,
+.stay-guests-pill .stay-guests-stepper {
+  width: 2ch;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+/* The native number spinners duplicate the +/- controls the JSX already renders. */
+.flight-dropdown-pill .flight-passengers-stepper::-webkit-outer-spin-button,
+.flight-dropdown-pill .flight-passengers-stepper::-webkit-inner-spin-button,
+.stay-guests-pill .stay-guests-stepper::-webkit-outer-spin-button,
+.stay-guests-pill .stay-guests-stepper::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.flight-dropdown-pill .flight-passengers-label,
+.stay-guests-pill .stay-guests-label {
+  font-size: 10.5px;
   color: var(--fg);
 }
 
@@ -4455,7 +4587,7 @@ button.btn-primary,
 }
 
 [data-theme="dark"] .flight-quick-chips .chip.sel {
-  color: #000 !important;
+  color: #000000 !important;
 }
 
 .flight-filter-chips-row {
@@ -4465,7 +4597,7 @@ button.btn-primary,
 }
 
 [data-theme="dark"] .flight-filter-chips-row .chip.sel {
-  color: #000 !important;
+  color: #000000 !important;
 }
 
 /* Flight result cards */
@@ -4769,31 +4901,6 @@ button.btn-primary,
   font-weight: 500;
   cursor: pointer;
   outline: none;
-}
-
-.guest-spinner {
-  display: flex;
-  flex-direction: column;
-  margin-left: 4px;
-}
-
-.guest-spinner button {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0;
-  width: 8px;
-  height: 10px;
-  line-height: 1;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.guest-spinner button:hover {
-  color: var(--fg);
 }
 
 .stay-search-submit-btn {
@@ -5112,6 +5219,29 @@ button.btn-primary,
   white-space: nowrap;
 }
 
+.stay-google-btn {
+  width: 100%;
+  margin-bottom: 8px;
+
+  padding: 8px 10px;
+
+  border: 1px solid var(--border);
+  border-radius: 999px;
+
+  background: var(--surface);
+  color: var(--fg);
+
+  font-size: 12px;
+  font-weight: 600;
+
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stay-google-btn:hover {
+  background: var(--bg-soft);
+}
+
 /* Vacation Rentals Sponsored Carousel */
 .rentals-sponsored-section {
   margin-bottom: 20px;
@@ -5181,8 +5311,4 @@ button.btn-primary,
 
 [data-theme="dark"] .auth-link:hover {
   text-decoration: underline;
-}
-
-[data-theme="dark"] .auth-header .splash-mark {
-  color: var(--fg) !important;
 }

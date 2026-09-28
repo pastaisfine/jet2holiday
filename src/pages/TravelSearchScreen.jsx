@@ -6,7 +6,6 @@ import {
   House,
   MagnifyingGlass,
   ArrowsLeftRight,
-  CaretDown,
   CaretLeft,
   CaretRight,
   SlidersHorizontal,
@@ -209,6 +208,13 @@ export default function TravelSearchScreen({ useAppState }) {
     navigate("/travel");
   };
 
+  const handleGoogleHotelSearch = (name) => {
+    window.open(
+      `https://www.google.com/search?q=${encodeURIComponent(name)}`,
+      "_blank"
+    );
+  };
+
   const handleSelectRental = (rental) => {
     selectHotel(rental);
     navigate("/travel");
@@ -296,17 +302,28 @@ export default function TravelSearchScreen({ useAppState }) {
 
               <div className="flight-dropdown-pill">
                 <Users size={14} />
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={passengers}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
-                    setPassengers(Math.min(20, Math.max(1, value || 1)));
-                  }}
-                  className="flight-passengers-stepper"
-                />
+
+                <div className="passenger-count-wrap">
+                  <span className="stepper-value">{passengers}</span>
+
+                  <div className="vertical-stepper">
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => setPassengers(Math.min(20, passengers + 1))}
+                    >
+                      ▲
+                    </button>
+
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => setPassengers(Math.max(1, passengers - 1))}
+                    >
+                      ▼
+                    </button>
+                  </div>
+                </div>
 
                 <span className="flight-passengers-label">
                   {passengers === 1 ? "passenger" : "passengers"}
@@ -637,17 +654,28 @@ export default function TravelSearchScreen({ useAppState }) {
 
               <div className="stay-guests-pill">
                 <Users size={14} />
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={guests}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
-                    setGuests(Math.min(20, Math.max(1, value || 1)));
-                  }}
-                  className="stay-guests-stepper"
-                />
+
+                <div className="passenger-count-wrap">
+                  <span className="stepper-value">{guests}</span>
+
+                  <div className="vertical-stepper">
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => setGuests(Math.min(20, guests + 1))}
+                    >
+                      ▲
+                    </button>
+
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => setGuests(Math.max(1, guests - 1))}
+                    >
+                      ▼
+                    </button>
+                  </div>
+                </div>
 
                 <span className="stay-guests-label">
                   {guests === 1 ? "guest" : "guests"}
@@ -771,9 +799,19 @@ export default function TravelSearchScreen({ useAppState }) {
                 {/* Pricing & CTA */}
                 <div className="stay-card-tail">
                   <div className="stay-price-stack">
-                    {hotel.dealBadge && <span className="stay-tail-deal">{hotel.dealBadge}</span>}
+                    {hotel.dealBadge && (
+                      <span className="stay-tail-deal">{hotel.dealBadge}</span>
+                    )}
                     <span className="stay-card-price">{hotel.price}</span>
                   </div>
+
+                  <button
+                    className="stay-google-btn"
+                    onClick={() => handleGoogleHotelSearch(hotel.name)}
+                  >
+                    View details
+                  </button>
+
                   <button
                     className="btn btn-primary stay-cta-btn"
                     onClick={() => handleSelectHotel(hotel)}
@@ -897,17 +935,28 @@ export default function TravelSearchScreen({ useAppState }) {
 
               <div className="stay-guests-pill">
                 <Users size={14} />
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={guests}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
-                    setGuests(Math.min(20, Math.max(1, value || 1)));
-                  }}
-                  className="stay-guests-stepper"
-                />
+
+                <div className="passenger-count-wrap">
+                  <span className="stepper-value">{guests}</span>
+
+                  <div className="vertical-stepper">
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => setGuests(Math.min(20, guests + 1))}
+                    >
+                      ▲
+                    </button>
+
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => setGuests(Math.max(1, guests - 1))}
+                    >
+                      ▼
+                    </button>
+                  </div>
+                </div>
 
                 <span className="stay-guests-label">
                   {guests === 1 ? "guest" : "guests"}
@@ -1036,6 +1085,14 @@ export default function TravelSearchScreen({ useAppState }) {
                   <div className="stay-price-stack">
                     <span className="stay-card-price">{rental.price}</span>
                   </div>
+
+                  <button
+                    className="stay-google-btn"
+                    onClick={() => handleGoogleHotelSearch(rental.name)}
+                  >
+                    View details
+                  </button>
+
                   <button
                     className="btn btn-primary stay-cta-btn"
                     onClick={() => handleSelectRental(rental)}

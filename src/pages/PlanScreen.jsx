@@ -3,13 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { DragDropProvider, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable } from "@dnd-kit/react";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { PLAN, ROUTE_LEGS } from "../data/plans";
-import { HOTELS, FLIGHTS, CAR_RENTALS } from "../data/travel";
+import { HOTELS, FLIGHTS } from "../data/travel";
 import BottomSheet from "../components/BottomSheet";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { searchPlaces } from "../services/placesAutocomplete";
-import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox';
+import Map, { Marker, Source, Layer, GeolocateControl } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { getDirections } from '../services/mapbox';
+import { ArrowSquareOut } from "@phosphor-icons/react";
+import jsPDF from "jspdf";
 
 const MODES = ["balanced", "foodfirst", "slower"];
 const MODE_LABELS = { balanced: "Balanced", foodfirst: "Food-first", slower: "Slower pace" };
@@ -114,7 +116,6 @@ export default function PlanScreen({ useAppState }) {
     markPlanSeen,
     hotel,
     flight,
-    carRental,
     startDate,
     endDate,
     activeItinerary,
@@ -179,7 +180,20 @@ export default function PlanScreen({ useAppState }) {
   const plan = PLAN[baseMode] || PLAN.balanced;
   const hotelPicked = typeof hotel === "object" && hotel ? hotel : HOTELS.find((h) => h.id === hotel);
   const flightPicked = typeof flight === "object" && flight ? flight : FLIGHTS.find((f) => f.id === flight);
-  const carPicked = typeof carRental === "object" && carRental ? carRental : CAR_RENTALS.find((c) => c.id === carRental);
+
+  const getShortHotelName = (name) => {
+    if (!name) return "";
+
+    const lower = name.toLowerCase();
+
+    if (lower.includes("doubletree")) return "DoubleTree";
+    if (lower.includes("costa mahkota")) return "Costa Mahkota";
+    if (lower.includes("casa del rio")) return "Casa Del Rio";
+    if (lower.includes("twc luxury")) return "TWC Luxury";
+
+    return name.split(" ").slice(0, 2).join(" ");
+  };
+
 
   const allItineraries = [
     ...MODES.map((id) => ({ id, label: MODE_LABELS[id], kind: "default" })),
@@ -192,6 +206,88 @@ export default function PlanScreen({ useAppState }) {
     () => activeStops.map((stop) => ({ id: stop.id, src: stop.img, alt: stop.name })),
     [activeStops],
   );
+
+  function formatTime(time24) {
+    if (!time24) return "No time";
+
+    const [hour, minute] = time24.split(":");
+    let h = parseInt(hour, 10);
+
+    const ampm = h >= 12 ? "PM" : "AM";
+
+    h = h % 12;
+    if (h === 0) h = 12;
+
+    return `${h}:${minute} ${ampm}`;
+  }
+
+  const downloadItineraryPDF = (itinerary) => {
+    console.log("PDF button clicked");
+    const doc = new jsPDF();
+
+    // HEADER
+    doc.setFillColor(34, 197, 94);
+    doc.rect(0, 0, 210, 35, "F");
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.text("Travel Itinerary", 105, 16, { align: "center" });
+
+    doc.setFontSize(12);
+    doc.text(
+      `${activeItinerary?.name || "Trip Plan"}`,
+      105,
+      25,
+      { align: "center" }
+    );
+
+    let y = 50;
+
+    activeStops.forEach((stop, index) => {
+
+      // card background
+      doc.setFillColor(242, 246, 252);
+      doc.roundedRect(15, y - 4, 180, 26, 3, 3, "F");
+
+      // stop number
+      doc.setFillColor(30, 64, 175);
+      doc.circle(25, y + 6, 5, "F");
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.text(String(index + 1), 24, y + 8);
+
+      // time
+      doc.setTextColor(30, 30, 30);
+      doc.setFontSize(11);
+      doc.text(formatTime(stop.t), 38, y + 4);
+
+      // location
+      doc.setFontSize(15);
+      doc.setFont(undefined, "bold");
+      doc.text(stop.name, 38, y + 12);
+
+      // subtitle
+      if (stop.subtitle) {
+        doc.setFont(undefined, "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(120, 120, 120);
+        doc.text(stop.subtitle, 38, y + 19);
+      }
+
+      y += 35;
+
+      if (y > 250) {
+        doc.addPage();
+        y = 20;
+      }
+
+    }); // closes forEach
+
+    doc.save(`${itinerary.name || "itinerary"}.pdf`);
+
+  }; // closes function
+
 
   useEffect(() => {
     markPlanSeen();
@@ -378,6 +474,15 @@ export default function PlanScreen({ useAppState }) {
             mapStyle="mapbox://styles/mapbox/streets-v12"
             mapboxAccessToken={import.meta.env.VITE_MAPBOX_TOKEN}
           >
+            <GeolocateControl
+              position="top-right"
+              positionOptions={{
+                enableHighAccuracy: true
+              }}
+              trackUserLocation={true}
+              showUserHeading={true}
+            />
+
             {activeStops.map(stop => stop.lng && stop.lat ? (
               <Marker key={stop.id} longitude={stop.lng} latitude={stop.lat} color="#C49B28" />
             ) : null)}
@@ -404,11 +509,64 @@ export default function PlanScreen({ useAppState }) {
         <div className="bento-card">
           <div className="bx-title">Trip basics · you're the leader</div>
           <div className="tl-picks">
-            <div className="tl-pick"><span className="lbl">Stay</span><span className="val">{hotelPicked ? `${hotelPicked.name} · ${hotelPicked.price}` : "none picked"}</span></div>
-            <div className="tl-pick"><span className="lbl">Flight</span><span className="val">{flightPicked ? `${flightPicked.name} · ${flightPicked.price}` : "none picked"}</span></div>
+
+            <div className="tl-pick">
+              <span className="lbl">Stay</span>
+
+              <span className="val">
+                {hotelPicked
+                  ? `${getShortHotelName(hotelPicked.name)} · ${hotelPicked.price}`
+                  : "none picked"}
+              </span>
+
+              {hotelPicked && (
+                <button
+                  className="book-now-btn"
+                  onClick={() =>
+                    window.open(
+                      `https://www.google.com/travel/search?q=${encodeURIComponent(hotelPicked.name)}`,
+                      "_blank"
+                    )
+                  }
+                >
+                  <ArrowSquareOut size={16} weight="regular" />
+                  <span>Book now!</span>
+                </button>
+              )}
+            </div>
+
+            <div className="tl-pick">
+              <span className="lbl">Flight</span>
+
+              <span className="val">
+                {flightPicked
+                  ? `${flightPicked.name} · ${flightPicked.price}`
+                  : "none picked"}
+              </span>
+
+              {flightPicked && (
+                <button
+                  className="book-now-btn"
+                  onClick={() =>
+                    window.open(
+                      `https://www.google.com/travel/flights?q=${encodeURIComponent(
+                        flightPicked.name
+                      )}`,
+                      "_blank"
+                    )
+                  }
+                >
+                  <ArrowSquareOut size={16} weight="regular" />
+                  <span>Book now!</span>
+                </button>
+              )}
+            </div>
+
           </div>
+
           <button className="btn btn-primary btn-block" onClick={() => navigateAway("/travel")}>Set trip basics →</button>
         </div>
+
 
         <div className="whatif bento-card">
           <div className="bx-title">Itineraries</div>
@@ -452,6 +610,14 @@ export default function PlanScreen({ useAppState }) {
         <div className="timeline">
           {activeStops.map((stop, index) => <DroppableStop key={stop.id} stop={stop} index={index} stops={activeStops} open={open} menuId={menuId} setOpen={setOpen} setMenuId={setMenuId} setSheetAction={setSheetAction} moveStop={moveStop} removeStop={removeStop} updateTime={updateTime} locateOnMap={handleLocateOnMap} />)}
           <button className="btn btn-secondary plan-add-stop" onClick={() => setSheetAction({ type: "add" })}>+ Add stop</button>
+          {confirmedItineraryId === activeItinerary?.id && (
+            <button
+              className="save-pdf-btn"
+              onClick={() => downloadItineraryPDF(activeItinerary)}
+            >
+              Save as PDF
+            </button>
+          )}
         </div>
         <DragOverlay>{(source) => {
           const stop = activeStops.find((item) => item.id === source.id);
@@ -472,16 +638,18 @@ export default function PlanScreen({ useAppState }) {
         {!placeLoading && placeResults.length === 0 && placeQuery.length >= 2 && !placeError && <div className="addplace-status">No results found</div>}
       </BottomSheet>
 
-      {(undoStop || undoItinerary) && <div className="plan-undo" role="status"><span>{undoStop ? `${undoStop.stop.name} removed` : `${undoItinerary.itinerary.label} deleted`}</span><button onClick={() => {
-        if (undoStop && undoStop.itineraryId === activeItinerary.id) {
-          const next = [...activeStops];
-          next.splice(undoStop.index, 0, undoStop.stop);
-          updateStops(next);
-        }
-        if (undoItinerary) restoreSuggestedItinerary(undoItinerary.itinerary, undoItinerary.index);
-        setUndoStop(null);
-        setUndoItinerary(null);
-      }}>Undo</button></div>}
-    </section>
+      {
+        (undoStop || undoItinerary) && <div className="plan-undo" role="status"><span>{undoStop ? `${undoStop.stop.name} removed` : `${undoItinerary.itinerary.label} deleted`}</span><button onClick={() => {
+          if (undoStop && undoStop.itineraryId === activeItinerary.id) {
+            const next = [...activeStops];
+            next.splice(undoStop.index, 0, undoStop.stop);
+            updateStops(next);
+          }
+          if (undoItinerary) restoreSuggestedItinerary(undoItinerary.itinerary, undoItinerary.index);
+          setUndoStop(null);
+          setUndoItinerary(null);
+        }}>Undo</button></div>
+      }
+    </section >
   );
 }
