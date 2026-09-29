@@ -1,8 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Crown, Star } from "phosphor-react";
+import { Crown } from "phosphor-react";
 import { useAuth } from "../context/useAuth";
-import { FRIENDS } from "../data/members";
 import { dayCount } from "../utils/date";
 import BottomSheet from "../components/BottomSheet";
 import PreferenceForm, { EMPTY_PREFERENCES } from "../components/PreferenceForm";
@@ -33,10 +32,9 @@ export default function SetupScreen({ useAppState }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [invited, setInvited] = useState({ ben: true, priya: true, marcus: true });
   const today = useMemo(() => { const date = new Date(); date.setHours(0, 0, 0, 0); return date; }, []);
   const [calMonth, setCalMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  const { setDest: saveDest, setDates, setLeader, startDate: savedStart, endDate: savedEnd, leader, pipelineCompleted, pipelineDest } = useAppState;
+  const { setDest: saveDest, setDates, setTripId, startDate: savedStart, endDate: savedEnd, pipelineCompleted, pipelineDest, tripId } = useAppState;
   const { preferenceProfiles, savePreferenceProfile } = useAppState;
   const preferenceId = profile?.id || profile?.username || "guest";
   const [preferenceOpen, setPreferenceOpen] = useState(false);
@@ -48,13 +46,13 @@ export default function SetupScreen({ useAppState }) {
   const [showDestSuggestions, setShowDestSuggestions] = useState(false);
   const destDebounceRef = useRef(null);
   const destLocked = Boolean(pipelineCompleted && pipelineDest);
-  const allMembers = useMemo(() => [{ k: "alice", n: profile?.username || "Alice", c: "#F19A6A" }, ...FRIENDS], [profile?.username]);
+  const destSuggestionsOpen = showDestSuggestions && destSuggestions.length > 0 && !destLocked;
   const grid = useMemo(() => buildMonthGrid(calMonth.getFullYear(), calMonth.getMonth()), [calMonth]);
   const startDate = localStart;
   const endDate = localEnd;
-  const destLabel = dest.trim() || "Lisbon, Portugal";
-  const dateSlug = startDate && endDate ? `${fmtShort(startDate).toLowerCase().replace(/\s+/g, "")}-${endDate.getDate()}` : "apr24-26";
-  const link = `tripder.app/t/${destLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "lisbon"}-${dateSlug}`;
+  const link = tripId
+    ? `${window.location.origin}/join/${tripId}`
+    : `${window.location.origin}/join/(create trip first)`;
   const scheduleDays = useMemo(() => {
     if (!startDate || !endDate) return [];
     const days = [];
@@ -105,7 +103,7 @@ export default function SetupScreen({ useAppState }) {
     setShowDestSuggestions(false);
   };
 
-  const continueToSwipe = (skipped = false) => {
+  const continueToSwipe = async (skipped = false) => {
     savePreferenceProfile(preferenceId, { ...preferences, completed: !skipped, skipped });
     const finalDest = dest.trim() || "Lisbon, Portugal";
     saveDest(finalDest);
@@ -117,13 +115,23 @@ export default function SetupScreen({ useAppState }) {
       return;
     }
 
-    // Q28: persist the trip row first (fire-and-forget), then stream the pipeline.
-    createOrUpdateTrip({
-      destination: finalDest,
-      startDate: localStart,
-      endDate: localEnd,
-      leaderId: session.user.id,
-    }).catch(() => { });
+    // Persist trip row and capture real trip UUID for invite link
+    let createdTripId = tripId;
+    try {
+      const trip = await createOrUpdateTrip({
+        tripId: tripId || undefined,
+        destination: finalDest,
+        startDate: localStart,
+        endDate: localEnd,
+        leaderId: session.user.id,
+      });
+      if (trip?.id) {
+        createdTripId = trip.id;
+        setTripId(trip.id);
+      }
+    } catch {
+      // non-blocking — continue to swipe even if DB write fails
+    }
 
     useAppState.update({
       idx: 0,
@@ -134,14 +142,19 @@ export default function SetupScreen({ useAppState }) {
       pipelineCompleted: false,
       pipelineDest: finalDest,
       pipelineThinFallback: false,
+      tripId: createdTripId || tripId || null,
     });
 
     resetPipeline();
+    // Deliberately not awaited: a cache hit resolves in a single query, and a
+    // miss resolves once the claim is recorded. Either way the deck is being
+    // watched over Realtime, so navigating now is correct rather than waiting.
     startPipeline({
       destination: finalDest,
       startDate: localStart ? localStart.toISOString() : null,
       endDate: localEnd ? localEnd.toISOString() : null,
       preferences,
+      tripId: createdTripId || tripId || null,
     });
 
     navigate("/swipe");
@@ -162,7 +175,10 @@ export default function SetupScreen({ useAppState }) {
       </div>
 
       {/* 1. Destination Card */}
-      <div className="bento-card" style={{ padding: 20 }}>
+      <div
+        className="bento-card"
+        style={{ padding: 20, overflow: destSuggestionsOpen ? "visible" : "hidden", zIndex: destSuggestionsOpen ? 20 : undefined }}
+      >
         <label style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg)" }}>
           Destination
         </label>
@@ -177,7 +193,7 @@ export default function SetupScreen({ useAppState }) {
             disabled={destLocked}
             style={{ marginTop: 4, height: 48, width: "100%", borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg)", padding: "0 14px", fontSize: 15, opacity: destLocked ? 0.6 : 1 }}
           />
-          {showDestSuggestions && destSuggestions.length > 0 && !destLocked && (
+          {destSuggestionsOpen && (
             <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", zIndex: 30, boxShadow: "0 8px 24px rgba(0,0,0,0.18)" }}>
               {destSuggestions.map((suggestion) => (
                 <button
@@ -267,71 +283,33 @@ export default function SetupScreen({ useAppState }) {
         )}
       </div>
 
-      {/* 3. Invite Friends Card */}
+      {/* 3. Invite Crew Card */}
       <div className="bento-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <label style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg)" }}>
-            Invite your crew
-          </label>
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>Tap ★ for leader</span>
+        <label style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg)" }}>
+          Invite your crew
+        </label>
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0 12px", lineHeight: 1.5 }}>
+          Share the link below. Friends sign up or sign in to join your workspace and start swiping the same places.
+        </p>
+
+        {/* Current user (you) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)", marginBottom: 12 }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#F19A6A", color: "var(--surface)", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>
+            {(profile?.username || "You").slice(0, 2).toUpperCase()}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>
+              {profile?.username || "You"}{" "}
+              <span style={{ fontSize: 10, background: "var(--fg)", color: "var(--surface)", padding: "2px 6px", borderRadius: 999, marginLeft: 4 }}>you · leader</span>
+            </div>
+          </div>
+          <Crown size={18} weight="fill" color="var(--accent)" title="Trip leader" />
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-          {allMembers.map((friend) => {
-            const isSel = friend.k === "alice" || invited[friend.k];
-            const isLead = leader === friend.k;
-            return (
-              <div
-                key={friend.k}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "10px 14px",
-                  background: isSel ? "var(--bg)" : "transparent",
-                  borderRadius: 16,
-                  border: `1px solid ${isSel ? "var(--border)" : "transparent"}`,
-                  cursor: friend.k !== "alice" ? "pointer" : "default",
-                  transition: "all 0.15s ease",
-                }}
-                onClick={() => friend.k !== "alice" && setInvited((current) => ({ ...current, [friend.k]: !current[friend.k] }))}
-              >
-                <div style={{ width: 34, height: 34, borderRadius: "50%", background: friend.c, color: "var(--surface)", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>
-                  {friend.n.slice(0, 2).toUpperCase()}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>
-                    {friend.n} {friend.k === "alice" && <span style={{ fontSize: 10, background: "var(--fg)", color: "var(--surface)", padding: "2px 6px", borderRadius: 999, marginLeft: 4 }}>you</span>}
-                  </div>
-                  {isLead && (
-                    <div style={{ fontSize: 12, color: "var(--muted)" }}>Trip leader</div>
-                  )}
-                </div>
-
-                {isLead && <Crown size={18} weight="fill" color="var(--accent)" title="Trip leader" />}
-                {isSel && (
-                  <button
-                    style={{ background: "none", border: "none", color: isLead ? "var(--accent)" : "var(--border)", cursor: "pointer", padding: 4 }}
-                    title="Make trip leader"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setLeader(friend.k);
-                    }}
-                  >
-                    <Star size={16} weight={isLead ? "fill" : "regular"} />
-                  </button>
-                )}
-                <span style={{ fontSize: 13, fontWeight: 700, color: isSel ? "var(--gerund)" : "var(--border)" }}>
-                  {isSel ? "✓" : "○"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
+        {/* Invite link */}
         <button
           className="btn btn-secondary btn-block"
-          style={{ marginTop: 12 }}
+          style={{ marginTop: 4 }}
           onClick={() => setInviteOpen((open) => !open)}
         >
           {copied ? "Link Copied to Clipboard!" : "Share Invite Link"}
@@ -339,13 +317,17 @@ export default function SetupScreen({ useAppState }) {
 
         {inviteOpen && (
           <div style={{ marginTop: 10, padding: 14, background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Anyone with this link lands directly in your trip.</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="input" readOnly value={link} style={{ flex: 1, fontSize: 13, padding: "0 10px", height: 38, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)" }} />
-              <button className="btn btn-primary" style={{ minHeight: 38, padding: "0 14px", fontSize: 13 }} onClick={copyInvite}>
-                {copied ? "Copied" : "Copy"}
-              </button>
+            <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
+              {tripId ? "Anyone with this link lands directly in your trip workspace." : "Create your trip first — the invite link will appear here."}
             </div>
+            {tripId && (
+              <div style={{ display: "flex", gap: 8 }}>
+                <input className="input" readOnly value={link} style={{ flex: 1, fontSize: 11, padding: "0 10px", height: 38, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)" }} />
+                <button className="btn btn-primary" style={{ minHeight: 38, padding: "0 14px", fontSize: 13 }} onClick={copyInvite}>
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -353,8 +335,7 @@ export default function SetupScreen({ useAppState }) {
       <button
         className="btn btn-primary btn-block"
         style={{ marginTop: 8 }}
-        onClick={() => !destLocked && setPreferenceOpen(true)}
-        disabled={destLocked}
+        onClick={() => (destLocked ? navigate("/hub") : setPreferenceOpen(true))}
       >
         {destLocked ? "Trip generated ✓" : "Create trip & invite group →"}
       </button>

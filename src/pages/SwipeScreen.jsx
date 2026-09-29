@@ -6,32 +6,14 @@ import ReasonChips from "../components/ReasonChips";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { searchPlaces } from "../services/placesAutocomplete";
 import { useAuth } from "../context/useAuth";
-import { usePipeline } from "../services/generateTrip";
+import { usePipeline, startPipeline } from "../services/generateTrip";
 import { supabase } from "../lib/supabase";
 import { CARD_DATA } from "../data/cards";
 import { analyzePreferences } from "../services/preference";
+import { preloadImage } from "../services/imagePreloader";
+import { getTripDeckId } from "../services/tripService";
 
 const LISBON_FALLBACK = "Lisbon, Portugal";
-
-function enrichedToCard(location, destination) {
-  const id = `gen-${location.placeId || location.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-  return {
-    id,
-    name: location.name,
-    area: location.address || destination,
-    cat: [location.category || "Place"],
-    cost: location.rating ? `★ ${location.rating}` : "—",
-    img: location.thumbnail || "/images/alfama.jpg",
-    blurb: "",
-    likeR: [],
-    noR: [],
-    detail: [],
-    lat: location.lat,
-    lng: location.lng,
-    styleHint: location.styleHint,
-    generated: true,
-  };
-}
 
 const initialSheets = { reason: false, detail: false, addPlace: false, more: false };
 const preferenceOptions = {
@@ -80,7 +62,25 @@ const HeartIcon = () => (
 export default function SwipeScreen({ useAppState }) {
   const navigate = useNavigate();
   const { profile, session } = useAuth();
-  const { idx, likes, skips, swipeCard, saveReason, allCards, appendCard, appendGeneratedCards, markPipelineCompleted, preferenceProfiles, savePreferenceProfile, dest, pipelineCompleted } = useAppState;
+  const {
+    idx,
+    likes,
+    skips,
+    swipeCard,
+    saveReason,
+    allCards,
+    appendCard,
+    appendGeneratedCards,
+    markPipelineCompleted,
+    preferenceProfiles,
+    savePreferenceProfile,
+    dest,
+    pipelineCompleted,
+    tripId,
+    update,
+    addedCards,
+    pipelineThinFallback,
+  } = useAppState;
   const pipeline = usePipeline();
   const preferenceId = profile?.id || profile?.username || "guest";
   const ingestedRef = useRef(0);
@@ -189,37 +189,33 @@ export default function SwipeScreen({ useAppState }) {
   const debounceRef = useRef(null);
   const searchSeqRef = useRef(0);
 
-  // Ingest enriched pipeline locations into the card deck as they stream in.
-  useEffect(() => {
-    if (pipeline.enriched.length < ingestedRef.current) {
-      ingestedRef.current = 0;
-    }
-    if (pipeline.enriched.length <= ingestedRef.current) return;
-    const fresh = pipeline.enriched.slice(ingestedRef.current);
-    ingestedRef.current = pipeline.enriched.length;
-    appendGeneratedCards(fresh.map((loc) => enrichedToCard(loc, dest || LISBON_FALLBACK)));
-    if (!pipelineCompleted) markPipelineCompleted(dest || LISBON_FALLBACK);
-    if (pipeline.enriched.length >= 2 && useAppState.pipelineThinFallback) {
-      useAppState.update({ pipelineThinFallback: false });
-    }
-  }, [pipeline.enriched, appendGeneratedCards, markPipelineCompleted, dest, pipelineCompleted, useAppState]);
+  const [readyCardIds, setReadyCardIds] = useState(() => new Set(CARD_DATA.map((c) => c.id)));
 
-  // Q22: pipeline ended with <2 enriched spots (or errored) → fall back to Lisbon hardcoded deck.
+  const addedCardsRef = useRef(addedCards);
   useEffect(() => {
-    const thinOrFailed = (pipeline.done && pipeline.enriched.length < 2) || (Boolean(pipeline.error) && pipeline.enriched.length < 2);
-    if (thinOrFailed && dest && dest !== LISBON_FALLBACK && !useAppState.pipelineThinFallback) {
-      useAppState.update({ pipelineThinFallback: true });
-    }
-  }, [pipeline.done, pipeline.error, pipeline.enriched.length, dest, useAppState]);
+    addedCardsRef.current = addedCards;
+  }, [addedCards]);
 
-  // Q11: when a non-Lisbon destination is set (and pipeline produced a usable deck),
-  // hide the Lisbon hardcoded fallback cards.
   const hardcodedIds = useMemo(() => new Set(CARD_DATA.map((c) => c.id)), []);
-  const hideHardcoded = Boolean(dest && dest !== LISBON_FALLBACK && !useAppState.pipelineThinFallback);
-  const visibleCards = useMemo(
-    () => (hideHardcoded ? allCards.filter((c) => !hardcodedIds.has(c.id)) : allCards),
-    [allCards, hideHardcoded, hardcodedIds],
+  const generatedCards = useMemo(
+    () => (addedCards || []).filter((c) => !hardcodedIds.has(c.id)),
+    [addedCards, hardcodedIds],
   );
+
+  const isLisbon = !dest || dest === LISBON_FALLBACK;
+  const showFallbackDeck = isLisbon || Boolean(pipelineThinFallback);
+
+  // Generated cards are no longer gated on their image bytes having arrived. A
+  // card renders as soon as its row lands and falls back to a placeholder if
+  // the photo never loads, because a deck that silently drops spots is worse
+  // than a deck with a gap in it. The hardcoded deck keeps the original gate:
+  // its images are local and always available.
+  const visibleCards = useMemo(() => {
+    if (showFallbackDeck) {
+      return allCards.filter((c) => readyCardIds.has(c.id));
+    }
+    return generatedCards;
+  }, [showFallbackDeck, allCards, readyCardIds, generatedCards]);
 
   const remaining = visibleCards.slice(idx);
   const total = visibleCards.length;
@@ -227,6 +223,86 @@ export default function SwipeScreen({ useAppState }) {
     () => visibleCards.map((card) => ({ id: card.id, src: card.img, alt: card.name })),
     [visibleCards],
   );
+
+  // Resume an existing deck when this session never started one.
+  //
+  // The deck lives in the database, so it outlives the session that generated
+  // it. Without this, arriving at /swipe directly (new device, cleared
+  // localStorage, or a shared link) would show nothing, and a member who
+  // joined mid-generation would never receive the cards still landing. On a
+  // cache hit this costs one query and no edge function call.
+  const resumeAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (resumeAttemptedRef.current) return;
+    if (!tripId || !session?.user?.id) return;
+    // SetupScreen already started a pipeline for this screen; nothing to resume.
+    if (pipeline.phase !== "idle") return;
+    // Local cards mean we have a deck to show already.
+    if (addedCards && addedCards.length > 0) return;
+
+    resumeAttemptedRef.current = true;
+
+    (async () => {
+      const deckId = await getTripDeckId(tripId);
+      if (!deckId) return;
+      await startPipeline({
+        destination: dest || LISBON_FALLBACK,
+        preferences: preferences || {},
+        tripId,
+      });
+    })();
+  }, [tripId, session?.user?.id, pipeline.phase, dest, preferences, addedCards]);
+
+  // Ingest streamed deck rows into the card deck. Cards arrive already in UI
+  // shape, so this is an append rather than a mapping step, and the deck grows
+  // while the rest of the deck is still being generated.
+  useEffect(() => {
+    if (pipeline.cards.length <= ingestedRef.current) return;
+    const fresh = pipeline.cards.slice(ingestedRef.current);
+    ingestedRef.current = pipeline.cards.length;
+
+    appendGeneratedCards(fresh);
+    if (!pipelineCompleted) markPipelineCompleted(dest || LISBON_FALLBACK);
+  }, [pipeline.cards, appendGeneratedCards, markPipelineCompleted, dest, pipelineCompleted]);
+
+  // Warm the image cache in the background. Failure is expected and harmless
+  // here: the card is already in the deck, and SwipeCard's onError hides the
+  // broken <img> so the card's gradient placeholder shows through.
+  useEffect(() => {
+    const pending = generatedCards.filter((c) => c.img && !readyCardIds.has(c.id));
+    if (pending.length === 0) return;
+
+    let active = true;
+
+    pending.forEach((card) => {
+      preloadImage(card.img)
+        .then(() => {
+          if (active) setReadyCardIds((prev) => new Set(prev).add(card.id));
+        })
+        .catch((err) => {
+          console.warn(`[Image Preload] "${card.name}" has no usable photo, showing placeholder:`, err?.message || err);
+        });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [generatedCards, readyCardIds]);
+
+  // Q22: pipeline ended with <2 spots (or errored) → fall back to Lisbon hardcoded deck.
+  useEffect(() => {
+    if (!dest || dest === LISBON_FALLBACK || pipelineThinFallback) return;
+    const settled = pipeline.phase === "done" || pipeline.phase === "error";
+    if (settled && generatedCards.length < 2) {
+      update({ pipelineThinFallback: true });
+    }
+  }, [dest, pipelineThinFallback, pipeline.phase, generatedCards.length, update]);
+
+  useEffect(() => {
+    if (pipelineThinFallback && generatedCards.length >= 2) {
+      update({ pipelineThinFallback: false });
+    }
+  }, [pipelineThinFallback, generatedCards.length, update]);
 
   const handleVerdict = (dir) => {
   const card = visibleCards[idx];
@@ -275,6 +351,7 @@ export default function SwipeScreen({ useAppState }) {
           direction: dir === "yes" ? "like" : "skip",
           reasons: finalReasons,
           reason: finalReason,
+          trip_id: tripId || null,
         },
         { onConflict: "id" }
       )
@@ -292,7 +369,7 @@ export default function SwipeScreen({ useAppState }) {
 
     return persistPromise;
   },
-  [session, dest]
+  [session, dest, tripId]
 );
 
   const saveAndClose = () => {
@@ -313,7 +390,7 @@ useEffect(() => {
   if (total === 0) return;
   if (idx < total) return;
   if (sheets.reason) return;
-  if (pipeline.streaming) return;
+  if (pipeline.phase === "generating") return;
   if (!session?.user?.id) return;
   if (preferenceAnalysisStartedRef.current) return;
 
@@ -324,7 +401,7 @@ useEffect(() => {
   idx,
   total,
   sheets.reason,
-  pipeline.streaming,
+  pipeline.phase,
   session,
   runPreferenceAnalysis,
 ]);
@@ -434,28 +511,67 @@ return (
           </div>
         </div>
 
+        {pipelineThinFallback && dest && dest !== LISBON_FALLBACK && (
+          <div
+            style={{
+              margin: "0 20px 10px",
+              padding: "8px 12px",
+              background: "var(--surface)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+              fontSize: 12,
+              color: "var(--muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span style={{ color: "var(--accent)" }}>●</span>
+            <span>
+              Limited photo-verified places found for <strong>{dest}</strong>. Showing sample Lisbon deck.
+            </span>
+          </div>
+        )}
+
         {idx >= total && !sheets.reason ? (
-          <div className="deck-zone empty">
-            <div className="deck sw-empty card">
-              {pipeline.streaming ? (
-                <>
-                  <div className="eyebrow">Generating</div>
-                  <h2 className="h-display" style={{ fontSize: 23 }}>
-                    Finding spots in {dest || "your destination"}…
-                  </h2>
-                  <p className="splash-copy" style={{ textAlign: "center" }}>
-                    {pipeline.enriched.length} loaded so far — cards appear here as they're found.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="eyebrow">Deck cleared</div>
-                  <h2 className="h-display" style={{ fontSize: 23 }}>
-                    That's a full opinion.
-                  </h2>
-                  <p className="splash-copy" style={{ textAlign: "center" }}>
-                    {likes} likes, {skips} skips and every reason is now a weighted signal — not just a tick box.
-                  </p>
+          <div className="deck-zone">
+            {pipeline.phase === "generating" ? (
+              <div className="deck">
+                <div className="swcard loading-skeleton-card" style={{ zIndex: 30 }}>
+                  <div className="ph skeleton-ph" style={{ position: "absolute", inset: 0, zIndex: 0 }}>
+                    <div className="skeleton-shimmer" />
+                    <div className="topline">
+                      <span className="chip">Curating…</span>
+                      <span className="chip">★ …</span>
+                    </div>
+                    <div className="skeleton-center">
+                      <div className="skeleton-spinner" />
+                      <div className="skeleton-status-title">
+                        {pipeline.expectedCount > 0
+                          ? `Checking photos… ${pipeline.cards.length} of ${pipeline.expectedCount} ready`
+                          : "Curating spots with photos…"}
+                      </div>
+                      <div className="skeleton-status-sub">
+                        {dest ? `Finding places in ${dest}` : "Checking photo availability"}
+                      </div>
+                    </div>
+                    <div className="veil" />
+                  </div>
+                  <div className="body" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 1, background: "transparent", padding: "20px" }}>
+                    <div className="skeleton-line title" />
+                    <div className="skeleton-line sub" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="deck sw-empty card">
+                <div className="eyebrow">Deck cleared</div>
+                <h2 className="h-display" style={{ fontSize: 23 }}>
+                  That's a full opinion.
+                </h2>
+                <p className="splash-copy" style={{ textAlign: "center" }}>
+                  {likes} likes, {skips} skips and every reason is now a weighted signal — not just a tick box.
+                </p>
 
                  <button
                     className="btn btn-primary"
@@ -484,10 +600,9 @@ return (
                   <button className="btn btn-secondary" style={{ marginTop: 8 }} onClick={() => dispatchSheets({ type: "addPlace" })}>
                     More itineraries on your mind?
                   </button>
-                </>
+                </div>
               )}
             </div>
-          </div>
         ) : (
           <div className="deck-zone">
           <div className="deck">
@@ -577,7 +692,7 @@ return (
           {detailCard && (
             <div className="detail-body">
               <div className="detail-hero">
-                <img src={detailCard.img} alt={detailCard.name} />
+                <img src={detailCard.img} alt={detailCard.name} referrerPolicy="no-referrer" />
                 <div className="veil" />
                 <button className="detail-close" onClick={() => dispatchSheets({ type: "close" })}>
                   ✕
@@ -659,7 +774,7 @@ return (
           </div>
         </BottomSheet>
 
-        {(pipeline.streaming || pipeline.error) && (
+        {(pipeline.phase === "generating" || pipeline.error) && (
           <div
             role="status"
             style={{
@@ -677,10 +792,12 @@ return (
               maxWidth: 260,
             }}
           >
-            {pipeline.streaming && (
+            {pipeline.phase === "generating" && (
               <>
                 <div style={{ fontWeight: 600 }}>
-                  Generating your trip… {pipeline.enriched.length} spot{pipeline.enriched.length === 1 ? "" : "s"} loaded
+                  {pipeline.expectedCount > 0
+                    ? `Finding photos… ${pipeline.cards.length} of ${pipeline.expectedCount} spots ready`
+                    : `Curating spots in ${dest || LISBON_FALLBACK}…`}
                 </div>
                 <button
                   onClick={() => navigate("/profile")}
@@ -690,7 +807,7 @@ return (
                 </button>
               </>
             )}
-            {pipeline.error && !pipeline.streaming && (
+            {pipeline.error && pipeline.phase !== "generating" && (
               <div style={{ color: "var(--nom)" }}>Couldn't generate spots — using fallback deck.</div>
             )}
           </div>

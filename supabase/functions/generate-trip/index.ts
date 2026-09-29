@@ -17,57 +17,340 @@ const CATEGORY_TO_STYLE: Record<string, string> = {
 };
 const CATEGORIES = Object.keys(CATEGORY_TO_STYLE);
 
+const PHOTO_BUCKET = "trip-photos";
+const MAX_CARDS = 19;
+
 interface LocationSuggestion {
   name: string;
   category: string;
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: CORS });
+interface EnrichedPlace {
+  title: string;
+  lat: number;
+  lng: number;
+  placeId: string;
+  thumbnail: string;
+  rating: number | null;
+  address: string;
+}
+
+// SerpApi's google_maps engine takes 2-6s per search, so running the enrichment
+// sequentially costs ~4s x locations. A small pool overlaps those waits; the
+// cap keeps us under SerpApi's searches-per-second limit instead of trading
+// latency for 429s.
+const SERP_CONCURRENCY = 4;
+const SERP_TIMEOUT_MS = 12_000;
+const SERP_429_BACKOFF_MS = 1_500;
+
+// Upper bound on the whole enrichment phase. SerpApi stays slow, becomes slow
+// for everyone, or starts failing: we ship the photo-verified places we got
+// rather than leaving the client on a skeleton until it gives up. Anything
+// still running past this is dropped, but what already landed stays in the
+// table, so the deck is shorter rather than missing.
+const ENRICH_DEADLINE_MS = 25_000;
+
+// Gemini has no client-imposed deadline of its own, so a hung request would
+// otherwise hold the claim open indefinitely.
+// A real generation is a much bigger job than a probe, so the ceiling is
+// generous: a slow-but-working model must not be killed mid-answer. The
+// flash-latest alias was observed hanging past 25s on a trivial request, which
+// is exactly why it is a late fallback rather than a first choice.
+const GEMINI_TIMEOUT_MS = 45_000;
+
+// A 404 here means the model is not served to this key at all, so retrying is
+// pointless and the loop should move on immediately. A 503 is capacity
+// pressure and resolves on its own, so it gets a bounded number of tries.
+// Kept small because the list now leads with verified-working models: the
+// fallbacks should not cost more time than they save.
+const GEMINI_TRANSIENT_ATTEMPTS = 3;
+const GEMINI_PER_MODEL_ATTEMPTS = 2;
+
+// Order is set by a live probe of this project's key, not by guesswork.
+//
+// Probed 2026-09-29 against this account:
+//   gemini-3.5-flash         200, ~2.5s  — works
+//   gemini-flash-lite-latest 200, ~0.9s  — works, fastest
+//   gemini-3.6-flash         503 overloaded
+//   gemini-flash-latest      hangs past 25s
+//   gemini-3.1-pro-preview   429, separate tier with no quota on this plan
+//
+// So the two verified models lead. The overloaded ones stay in the list as
+// backstops, since 503 is a capacity condition and resolves on its own.
+// Never list a 2.5 model first: those 404 for keys without a legacy usage
+// history, and any 404 before a working model wastes a whole run.
+const GEMINI_MODELS = [
+  "gemini-3.5-flash",
+  "gemini-flash-lite-latest",
+  "gemini-3.6-flash",
+  "gemini-3.8-flash",
+  "gemini-flash-latest",
+];
+
+/**
+ * Runs `worker` over `items` with at most `limit` in flight. Preserves input
+ * order in the returned array, and a worker that throws yields null rather
+ * than rejecting the batch.
+ */
+async function runPool<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      try {
+        results[index] = await worker(items[index], index);
+      } catch (err) {
+        console.warn(`[generate-trip] Pool worker failed on item ${index}:`, err);
+        results[index] = null as R;
+      }
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+}
+
+/** JSON body with CORS. */
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS, "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * Distinguishes an exhausted account quota from ordinary per-minute rate
+ * limiting.
+ *
+ * Both arrive as 429, but only one clears within a request. Google's
+ * quota-exhausted message names billing explicitly, whereas a per-minute limit
+ * says "rate limit" or "resets at". Treating them the same made a dead account
+ * cost ~48s of retries across every model before reporting the same outcome.
+ */
+function isQuotaExhausted(status: number, body: string): boolean {
+  if (status !== 429) return false;
+  const text = body.toLowerCase();
+  // "quota" on its own is ambiguous: per-minute limits are also expressed as a
+  // quota ("quota of 10 requests per minute exceeded") and do clear on their
+  // own, so a bare mention must not trigger the fast path.
+  if (text.includes("billing") || text.includes("exceeded your current quota")) {
+    return true;
   }
+  // A per-minute limit is recoverable; anything else that is merely described
+  // as a quota is treated the same way and left to the retry loop.
+  const recoverable =
+    text.includes("rate limit") ||
+    text.includes("rate-limit") ||
+    text.includes("resets at") ||
+    text.includes("per minute") ||
+    text.includes("per 100 seconds");
+  return !recoverable && text.includes("quota");
+}
+
+/**
+ * Derives the same cache key the client builds in tripService.buildDeckId.
+ * Both sides must agree, so it is recomputed here rather than trusted from the
+ * request body — a mismatched key would silently create a second cache entry.
+ */
+function buildDeckId(destination: string, preferences: Record<string, unknown>): string {
+  const dest = destination.trim().toLowerCase().replace(/\s+/g, " ");
+  const prefs = preferences || {};
+  const parts = Object.keys(prefs)
+    .sort()
+    .map((key) => {
+      const value = preferences[key];
+      if (value == null) return "";
+      if (Array.isArray(value)) return `${key}=${value.join(",")}`;
+      return `${key}=${String(value)}`;
+    })
+    .filter(Boolean);
+  return `${dest}::${parts.join("|")}`;
+}
+
+/** Minimal PostgREST client bound to the service role, which bypasses RLS. */
+function adminClient(supabaseUrl: string, serviceRoleKey: string) {
+  const headers = {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+    "Content-Type": "application/json",
+  };
+
+  return {
+    headers,
+    async insertCard(deckId: string, position: number, loc: LocationSuggestion, place: EnrichedPlace) {
+      const res = await fetch(`${supabaseUrl}/rest/v1/trip_cards`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          deck_id: deckId,
+          position,
+          name: place.title,
+          category: loc.category,
+          style_hint: CATEGORY_TO_STYLE[loc.category] || "balanced",
+          img_url: place.thumbnail,
+          lat: place.lat,
+          lng: place.lng,
+          place_id: place.placeId,
+          rating: place.rating,
+          address: place.address,
+        }),
+      });
+      if (!res.ok) {
+        console.warn(`[generate-trip] Card insert failed: ${res.status} ${await res.text().catch(() => "")}`);
+        return null;
+      }
+      return (await res.json())?.[0] ?? null;
+    },
+    async linkTripToDeck(tripId: string, deckId: string) {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/trip_deck_links?on_conflict=trip_id`,
+        { method: "POST", headers, body: JSON.stringify({ trip_id: tripId, deck_id: deckId }) }
+      );
+      if (!res.ok) {
+        // Not fatal: the deck still generates and streams, and a later call
+        // will retry the link.
+        console.warn(`[generate-trip] Trip link failed: ${res.status} ${await res.text().catch(() => "")}`);
+      }
+    },
+    async updateDeck(deckId: string, patch: Record<string, unknown>) {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/curated_decks?id=eq.${encodeURIComponent(deckId)}`,
+        { method: "PATCH", headers, body: JSON.stringify(patch) }
+      );
+      if (!res.ok) {
+        console.warn(`[generate-trip] Deck update failed: ${res.status} ${await res.text().catch(() => "")}`);
+      }
+      return res.ok;
+    },
+    async setCardImage(cardId: string, storagePath: string) {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/trip_cards?id=eq.${cardId}`,
+        { method: "PATCH", headers, body: JSON.stringify({ img_storage_path: storagePath }) }
+      );
+      if (!res.ok) {
+        console.warn(`[generate-trip] Card image update failed: ${res.status}`);
+      }
+    },
+    async uploadPhoto(path: string, bytes: ArrayBuffer, contentType: string) {
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/${PHOTO_BUCKET}/${path}`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": contentType, "x-upsert": "true" },
+        body: bytes,
+      });
+      if (!res.ok) {
+        console.warn(`[generate-trip] Photo upload failed: ${res.status} ${await res.text().catch(() => "")}`);
+        return false;
+      }
+      return true;
+    },
+  };
+}
+
+/**
+ * Copies a hotlinked thumbnail into our own bucket and returns the stored path.
+ *
+ * Runs after the card row is committed, so a failure here degrades to "still
+ * hotlinked" rather than losing the card. The remote URL is the fragile part:
+ * it can 404 later, and a card whose image fails used to be dropped entirely.
+ */
+async function upgradePhoto(
+  admin: ReturnType<typeof adminClient>,
+  cardId: string,
+  hotlink: string,
+): Promise<void> {
+  try {
+    const res = await fetch(hotlink, {
+      // Google's thumbnails reject requests that look like a hotlink.
+      headers: { "User-Agent": "Mozilla/5.0 jet2holiday" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return;
+
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) return;
+
+    const bytes = await res.arrayBuffer();
+    // SerpApi thumbnails are small; anything larger is not the image we asked
+    // for and would just burn storage.
+    if (bytes.byteLength === 0 || bytes.byteLength > 5_000_000) return;
+
+    // Unguessable path: the bucket is public, so the filename carries the
+    // entropy rather than the bucket ACL.
+    const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    const path = `decks/${cardId}/${rand}.${contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg"}`;
+
+    if (await admin.uploadPhoto(path, bytes, contentType)) {
+      await admin.setCardImage(cardId, path);
+    }
+  } catch (err) {
+    console.warn(`[generate-trip] Photo upgrade failed for card ${cardId}:`, err);
+  }
+}
+
+/**
+ * Resolves an RLS-bypassing key for the admin client.
+ *
+ * Prefers the new `sb_secret_` keys, falling back to the legacy service_role
+ * JWT. Both are injected into every function's environment by the platform --
+ * the name is `SUPABASE_SERVICE_ROLE_KEY`, not `SERVICE_ROLE_KEY`, and reading
+ * the wrong one silently disables every card insert.
+ */
+function resolveSecretKey(): string | null {
+  const secretKeys = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (secretKeys) {
+    try {
+      const parsed = JSON.parse(secretKeys);
+      if (parsed?.default) return parsed.default;
+    } catch {
+      // Malformed JSON here falls through to the legacy key.
+    }
+  }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || null;
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   const SERP_API_KEY = Deno.env.get("SERP_API_KEY");
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+  // Needed to insert card rows: the anon key cannot write under RLS, and the
+  // JWT below is already verified before we touch the database.
+  const SECRET_KEY = resolveSecretKey();
 
   if (!GEMINI_API_KEY || !SERP_API_KEY) {
-    return new Response(
-      JSON.stringify({ error: "GEMINI_API_KEY or SERP_API_KEY not configured" }),
-      { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
-    );
+    return json({ error: "GEMINI_API_KEY or SERP_API_KEY not configured" }, 500);
+  }
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return json({ error: "Supabase credentials not configured" }, 500);
+  }
+  if (!SECRET_KEY) {
+    return json({ error: "No service-role key available for card writes" }, 500);
   }
 
   // Q34: verify JWT server-side, derive userId from token — body userId ignored.
   const authHeader = req.headers.get("Authorization") || "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
-  if (!jwt || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...CORS, "Content-Type": "application/json" },
-    });
-  }
+  if (!jwt) return json({ error: "Unauthorized" }, 401);
 
   let userId: string;
   try {
     const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${jwt}`, apikey: SUPABASE_ANON_KEY },
     });
-    if (!userRes.ok) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...CORS, "Content-Type": "application/json" },
-      });
-    }
+    if (!userRes.ok) return json({ error: "Unauthorized" }, 401);
     const userData = await userRes.json();
     userId = userData.id;
     if (!userId) throw new Error("no user id");
   } catch {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...CORS, "Content-Type": "application/json" },
-    });
+    return json({ error: "Unauthorized" }, 401);
   }
 
   let body: {
@@ -75,47 +358,123 @@ Deno.serve(async (req: Request) => {
     startDate?: string | null;
     endDate?: string | null;
     preferences?: Record<string, unknown>;
+    deckId?: string;
+    tripId?: string;
+    // Regenerate: ignore a ready deck and re-claim this cache key, in place.
+    force?: boolean;
   };
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-      status: 400,
-      headers: { ...CORS, "Content-Type": "application/json" },
-    });
+    return json({ error: "Invalid JSON body" }, 400);
   }
 
   const destination = (body.destination || "").trim();
-  if (!destination) {
-    return new Response(JSON.stringify({ error: "destination is required" }), {
-      status: 400,
-      headers: { ...CORS, "Content-Type": "application/json" },
+  if (!destination) return json({ error: "destination is required" }, 400);
+
+  const preferences = body.preferences || {};
+  const deckId = buildDeckId(destination, preferences);
+  const admin = adminClient(SUPABASE_URL, SECRET_KEY);
+
+  // Only the claim's own user may generate. A second request for the same deck
+  // is answered from the table instead of duplicating the work.
+  const { data: deckRow } = await fetch(
+    `${SUPABASE_URL}/rest/v1/curated_decks?id=eq.${encodeURIComponent(deckId)}&select=*`,
+    { headers: admin.headers }
+  )
+    .then((r) => (r.ok ? r.json() : []))
+    .catch(() => []);
+
+  const existing = deckRow?.[0];
+
+  if (existing?.status === "ready" && !body.force) {
+    // Cache hit. Link the trip if it is not already on this deck, then let the
+    // client read the rows: no LLM, no SerpApi, no generation.
+    if (body.tripId) await admin.linkTripToDeck(body.tripId, deckId);
+    return json({ deckId, isGenerator: false, status: "ready", generated: false });
+  }
+
+  if (
+    existing &&
+    existing.status === "pending" &&
+    existing.claimed_by !== userId &&
+    !body.force
+  ) {
+    // Somebody else is mid-generation; the client watches Realtime for rows.
+    if (body.tripId) await admin.linkTripToDeck(body.tripId, deckId);
+    return json({ deckId, isGenerator: false, status: "pending", generated: false });
+  }
+
+  const claimedAt = new Date().toISOString();
+  if (!existing) {
+    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/curated_decks`, {
+      method: "POST",
+      headers: { ...admin.headers, Prefer: "return=representation" },
+      body: JSON.stringify({
+        id: deckId,
+        destination,
+        preferences_text: Object.keys(preferences).sort().map((k) => {
+          const v = preferences[k];
+          if (v == null) return "";
+          return `${k}=${Array.isArray(v) ? v.join(",") : String(v)}`;
+        }).filter(Boolean).join("|"),
+        status: "pending",
+        claimed_by: userId,
+        claimed_at: claimedAt,
+      }),
+    });
+
+    // Someone won the race between our read and this insert. Let them finish,
+    // but still point this trip at their deck.
+    if (!insertRes.ok && insertRes.status === 409) {
+      if (body.tripId) await admin.linkTripToDeck(body.tripId, deckId);
+      return json({ deckId, isGenerator: false, status: "pending", generated: false });
+    }
+
+    if (!insertRes.ok) {
+      return json(
+        { deckId, isGenerator: false, status: "failed", error: `Deck claim failed (${insertRes.status})` },
+        200
+      );
+    }
+  } else {
+    await admin.updateDeck(deckId, {
+      status: "pending",
+      claimed_by: userId,
+      claimed_at: claimedAt,
+      error_message: null,
     });
   }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (payload: Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
-      };
+  // Link only once the deck row exists. The other order is what produced a
+  // foreign-key violation: trip_deck_links.deck_id references a row that has
+  // not been created yet.
+  if (body.tripId) await admin.linkTripToDeck(body.tripId, deckId);
 
-      try {
-        const prefs = body.preferences || {};
-        const prefLines = [
-          prefs.rhythm ? `Travel rhythm: ${prefs.rhythm}` : "",
-          prefs.density ? `Itinerary density: ${prefs.density}` : "",
-          prefs.dining ? `Dining style: ${prefs.dining}` : "",
-          prefs.foodBudget ? `Food budget: ${prefs.foodBudget}` : "",
-          Array.isArray(prefs.dietary) && prefs.dietary.length ? `Dietary needs: ${prefs.dietary.join(", ")}` : "",
-          prefs.note ? `Extra note: ${prefs.note}` : "",
-        ].filter(Boolean).join("\n");
+  const fail = async (message: string) => {
+    console.error(`[generate-trip] FAILED for "${destination}": ${message}`);
+    await admin.updateDeck(deckId, { status: "failed", error_message: message.slice(0, 500) });
+    return json({ deckId, isGenerator: true, status: "failed", error: message }, 200);
+  };
 
-        const tripLength = body.startDate && body.endDate
-          ? Math.max(1, Math.round((new Date(body.endDate).getTime() - new Date(body.startDate).getTime()) / 86400000))
-          : null;
+  try {
+    const prefLines = [
+      preferences.rhythm ? `Travel rhythm: ${preferences.rhythm}` : "",
+      preferences.density ? `Itinerary density: ${preferences.density}` : "",
+      preferences.dining ? `Dining style: ${preferences.dining}` : "",
+      preferences.foodBudget ? `Food budget: ${preferences.foodBudget}` : "",
+      Array.isArray(preferences.dietary) && preferences.dietary.length
+        ? `Dietary needs: ${preferences.dietary.join(", ")}`
+        : "",
+      preferences.note ? `Extra note: ${preferences.note}` : "",
+    ].filter(Boolean).join("\n");
 
-        const systemInstruction = `You are the jet2holiday Itinerary Agent. Your ONLY job: given a travel destination, return a JSON array of the best places to visit there.
+    const tripLength =
+      body.startDate && body.endDate
+        ? Math.max(1, Math.round((new Date(body.endDate).getTime() - new Date(body.startDate).getTime()) / 86400000))
+        : null;
+
+    const systemInstruction = `You are the jet2holiday Itinerary Agent. Your ONLY job: given a travel destination, return a JSON array of the best places to visit there.
 Output format: [{"name":"Place name","category":"one of: ${CATEGORIES.join(", ")}"}]
 Rules:
 - Return between 6 and 19 locations. Pick the count based on how much the destination offers (a small town → ~6, a world city → ~15).
@@ -123,170 +482,285 @@ Rules:
 - Prefer area-level, well-known, real places (landmarks, neighborhoods, markets, viewpoints) over obscure or hyper-specific spots.
 - No prose, no markdown, no code fences — just the raw JSON array.`;
 
-        const userPrompt = `Destination: ${destination}
+    const userPrompt = `Destination: ${destination}
 ${tripLength ? `Trip length: ${tripLength} day${tripLength === 1 ? "" : "s"}` : ""}
 ${prefLines ? `Traveller preferences:\n${prefLines}` : ""}
 
 Return the JSON array of locations now:`;
 
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: systemInstruction }] },
-              contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-              generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
-            }),
-          }
-        );
+    const modelErrors: string[] = [];
+    // One line per model, recording how it finally failed. Truncating to the
+    // last few raw errors hid the fact that the first three models were the
+    // ones actually failing, which is the part worth knowing.
+    const perModel: string[] = [];
+    let rawText = "";
 
-        if (!geminiRes.ok) {
-          const errBody = await geminiRes.text();
-          send({ type: "error", message: `Gemini API error ${geminiRes.status}: ${errBody.slice(0, 500)}` });
-          controller.close();
-          return;
-        }
-
-        let rawText = "";
-        const reader = geminiRes.body!.getReader();
-        const decoder = new TextDecoder();
-        let done = false;
-        while (!done) {
-          const { value, done: readerDone } = await reader.read();
-          done = readerDone;
-          if (value) {
-            const chunk = decoder.decode(value, { stream: true });
-            for (const line of chunk.split("\n")) {
-              if (!line.startsWith("data: ")) continue;
-              const dataStr = line.slice(6).trim();
-              if (!dataStr || dataStr === "[DONE]") continue;
-              try {
-                const data = JSON.parse(dataStr);
-                const textChunk = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-                if (textChunk) rawText += textChunk;
-              } catch {
-                // ignore incomplete SSE chunk
-              }
-            }
-          }
-        }
-
-        if (!rawText) {
-          send({ type: "error", message: "Gemini returned no text." });
-          controller.close();
-          return;
-        }
-
-        const sanitize = (arr: unknown[]): LocationSuggestion[] =>
-          arr
-            .filter((t): t is Record<string, unknown> =>
-              typeof t === "object" && t !== null &&
-              typeof (t as Record<string, unknown>).name === "string" &&
-              ((t as Record<string, unknown>).name as string).trim().length > 0
-            )
-            .map((t) => {
-              const rawCat = typeof t.category === "string" ? t.category.trim().toLowerCase() : "";
-              return {
-                name: String(t.name).trim(),
-                category: CATEGORIES.includes(rawCat) ? rawCat : "culture",
-              };
-            })
-            .slice(0, 19);
-
-        let locations: LocationSuggestion[] = [];
-        const cleaned = rawText.trim()
-          .replace(/^```(?:json)?\s*/i, "")
-          .replace(/\s*```$/i, "")
-          .trim();
+    for (const model of GEMINI_MODELS) {
+      let lastStatus = "no attempt";
+      for (let attempt = 1; attempt <= GEMINI_TRANSIENT_ATTEMPTS; attempt++) {
         try {
-          const parsed = JSON.parse(cleaned);
-          if (Array.isArray(parsed)) locations = sanitize(parsed);
-        } catch {
-          const first = cleaned.indexOf("[");
-          const last = cleaned.lastIndexOf("]");
-          if (first !== -1 && last > first) {
-            try {
-              const parsed = JSON.parse(cleaned.slice(first, last + 1));
-              if (Array.isArray(parsed)) locations = sanitize(parsed);
-            } catch {
-              // fall through
+          const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              // Without this a hung request holds the claim open for as long
+              // as the platform allows.
+              signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: systemInstruction }] },
+                contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+                generationConfig: {
+                  temperature: 0.4,
+                  maxOutputTokens: 4096,
+                  responseMimeType: "application/json",
+                },
+              }),
             }
+          );
+
+          if (!geminiRes.ok) {
+            const errBody = await geminiRes.text().catch(() => "");
+            const msg = `[${model} attempt ${attempt}] ${geminiRes.status}: ${errBody.slice(0, 200)}`;
+            modelErrors.push(msg);
+            console.warn(`[generate-trip] ${msg}`);
+
+            // A billing/quota exhaustion is account-wide: no other model will
+            // succeed, and no backoff will clear it. Give up immediately rather
+            // than making the user watch a skeleton for a minute before we
+            // report the same thing.
+            if (isQuotaExhausted(geminiRes.status, errBody)) {
+              return await fail(
+                `Gemini quota exhausted for this project account. ` +
+                  `Check billing and quota at https://ai.google.dev/gemini-api/quotas. ` +
+                  `Last response: ${errBody.slice(0, 200)}`
+              );
+            }
+
+            // 404 means this key cannot use this model at all, which is a
+            // permanent condition for the request rather than a blip. Bail to
+            // the next model rather than burning the retry budget.
+            const unavailable = geminiRes.status === 404 || geminiRes.status === 403;
+            if (unavailable) {
+              lastStatus = `unavailable to this key (${geminiRes.status})`;
+              console.warn(`[generate-trip] Model ${model} not available to this key, skipping`);
+              break;
+            }
+
+            if (geminiRes.status === 503 || geminiRes.status === 429) {
+              // Capacity pressure. Keep trying this model before giving up on
+              // it, but bound it by the transient budget rather than falling
+              // straight through to the next model.
+              lastStatus = `overloaded after ${attempt} attempt(s) (${geminiRes.status})`;
+              if (attempt >= GEMINI_PER_MODEL_ATTEMPTS) break;
+              await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+              continue;
+            }
+
+            lastStatus = `error ${geminiRes.status}`;
+            break;
           }
-        }
 
-        if (locations.length === 0) {
-          send({ type: "error", message: "Could not parse location list from Gemini response." });
-          controller.close();
-          return;
+          const data = await geminiRes.json();
+          rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          if (rawText.trim().length > 0) {
+            console.log(`[generate-trip] Gemini generated locations via ${model}`);
+            perModel.push(`${model}: ok`);
+            break;
+          }
+          lastStatus = "returned an empty response";
+        } catch (err) {
+          lastStatus = `exception after ${attempt} attempt(s): ${String(err).slice(0, 80)}`;
+          modelErrors.push(`[${model} attempt ${attempt}] Exception: ${String(err)}`);
         }
+      }
+      if (rawText) break;
+      perModel.push(`${model}: ${lastStatus}`);
+      console.warn(`[generate-trip] Model ${model} exhausted retries: ${lastStatus}`);
+    }
 
-        // Emit the raw location list first so the client can render progress.
-        send({
-          type: "locations",
-          locations: locations.map((l) => ({
-            ...l,
-            styleHint: CATEGORY_TO_STYLE[l.category] || "balanced",
-          })),
+    if (!rawText) {
+      // Report every model's outcome, not just the last few raw responses. The
+      // summary is what tells us whether this is a bad model list (all 404) or
+      // capacity (all 503) — opposite fixes.
+      return await fail(
+        `Gemini unavailable across ${GEMINI_MODELS.length} models. ` +
+          `Per-model: ${perModel.join(" | ")}. ` +
+          `Last response: ${modelErrors[modelErrors.length - 1] ?? "none"}`
+      );
+    }
+
+    // Sanitize: strip code fences, then fall back to slicing the outermost
+    // array if the model wrapped the JSON in prose.
+    let cleaned = rawText.replace(/^```(?:json)?|```$/g, "").trim();
+    if (!cleaned.startsWith("[")) {
+      const first = cleaned.indexOf("[");
+      const last = cleaned.lastIndexOf("]");
+      if (first >= 0 && last > first) cleaned = cleaned.slice(first, last + 1);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return await fail("Could not parse location list from Gemini response");
+    }
+
+    const rawLocations = Array.isArray(parsed) ? parsed : (parsed as any)?.locations;
+    if (!Array.isArray(rawLocations)) {
+      return await fail("Gemini response was not a location array");
+    }
+
+    const locations: LocationSuggestion[] = rawLocations
+      .map((l: any) => ({
+        name: typeof l?.name === "string" ? l.name.trim() : "",
+        category: CATEGORIES.includes(l?.category) ? l.category : "culture",
+      }))
+      .filter((l: LocationSuggestion) => l.name.length > 0)
+      .slice(0, MAX_CARDS);
+
+    if (locations.length === 0) {
+      return await fail("Gemini returned no usable locations");
+    }
+
+    // Publish the count before enrichment starts. This is the progress signal
+    // the old pipeline could not give: the client knows a deck of this size is
+    // coming instead of staring at an undifferentiated skeleton.
+    await admin.updateDeck(deckId, { location_count: locations.length });
+    console.log(`[generate-trip] Enriching ${locations.length} locations for "${destination}"`);
+
+    const deadline = Date.now() + ENRICH_DEADLINE_MS;
+
+    const searchSerp = async (q: string): Promise<any | null> => {
+      const params = new URLSearchParams({
+        engine: "google_maps",
+        q,
+        type: "search",
+        api_key: SERP_API_KEY,
+      });
+
+      // Never let an in-flight search outlive the enrichment deadline,
+      // otherwise the last batch to start decides the real time-to-deck.
+      const budget = deadline - Date.now();
+      if (budget <= 0) return null;
+      const timeoutMs = Math.min(SERP_TIMEOUT_MS, budget);
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const res = await fetch(`https://serpapi.com/search.json?${params}`, {
+          signal: AbortSignal.timeout(timeoutMs),
         });
 
-        // Enrich each location via SerpApi google_maps_search (Q9). Drop failures silently (Q17).
-        let enrichedCount = 0;
-        for (const loc of locations) {
-          try {
-            const params = new URLSearchParams({
-              engine: "google_maps",
-              q: `${loc.name}, ${destination}`,
-              type: "search",
-              api_key: SERP_API_KEY,
-            });
-            const res = await fetch(`https://serpapi.com/search.json?${params}`);
-            if (!res.ok) continue;
-            const data = await res.json();
-            const result = data?.local_results?.[0] || data?.place_results;
-            if (!result) continue;
-
-            const lat = result?.gps_coordinates?.latitude;
-            const lng = result?.gps_coordinates?.longitude;
-            if (typeof lat !== "number" || typeof lng !== "number") continue;
-
-            enrichedCount += 1;
-            send({
-              type: "enriched",
-              location: {
-                name: result.title || loc.name,
-                lat,
-                lng,
-                placeId: result.place_id || "",
-                thumbnail: result.thumbnail || "",
-                rating: typeof result.rating === "number" ? result.rating : null,
-                address: result.address || "",
-                category: loc.category,
-                styleHint: CATEGORY_TO_STYLE[loc.category] || "balanced",
-              },
-            });
-          } catch {
-            // Q17: drop failed enrichment silently
-            continue;
-          }
+        if (res.status === 429 && attempt === 0) {
+          console.warn(`[generate-trip] SerpApi rate limited on "${q}", backing off`);
+          await new Promise((r) => setTimeout(r, SERP_429_BACKOFF_MS));
+          continue;
         }
 
-        send({ type: "done", count: enrichedCount });
-        controller.close();
-      } catch (err) {
-        send({ type: "error", message: String(err) });
-        controller.close();
-      }
-    },
-  });
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "");
+          console.warn(`[generate-trip] SerpApi error ${res.status} for "${q}":`, errText.slice(0, 200));
+          return null;
+        }
 
-  return new Response(stream, {
-    headers: {
-      ...CORS,
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
-  });
+        return await res.json();
+      }
+
+      return null;
+    };
+
+    const enrichOne = async (loc: LocationSuggestion): Promise<EnrichedPlace | null> => {
+      const queryCandidates = [`${loc.name}, ${destination}`];
+      if (!loc.name.toLowerCase().includes(destination.toLowerCase())) {
+        queryCandidates.push(loc.name);
+      }
+
+      for (const q of queryCandidates) {
+        const data = await searchSerp(q);
+        if (!data) continue;
+
+        const results: any[] = [];
+        if (data.place_results) results.push(data.place_results);
+        if (Array.isArray(data.local_results)) results.push(...data.local_results);
+
+        for (const item of results) {
+          const lat = item?.gps_coordinates?.latitude;
+          const lng = item?.gps_coordinates?.longitude;
+          if (typeof lat !== "number" || typeof lng !== "number") continue;
+
+          const thumbnail =
+            item.thumbnail ||
+            item.photos?.[0]?.thumbnail ||
+            item.photos?.[0]?.image ||
+            item.photos?.[0]?.photo ||
+            item.images?.[0]?.thumbnail ||
+            item.images?.[0]?.image ||
+            item.image ||
+            item.photo ||
+            "";
+
+          if (thumbnail && typeof thumbnail === "string" && thumbnail.trim().length > 0) {
+            return {
+              title: item.title || loc.name,
+              lat,
+              lng,
+              placeId: item.place_id || "",
+              thumbnail: thumbnail.trim(),
+              rating: typeof item.rating === "number" ? item.rating : null,
+              address: item.address || "",
+            };
+          }
+        }
+      }
+
+      return null;
+    };
+
+    // Each card is committed the moment it resolves, so clients render
+    // progress and a crash mid-run keeps what already landed.
+    let inserted = 0;
+    const photoUpgrades: Promise<void>[] = [];
+
+    await runPool(locations, SERP_CONCURRENCY, async (loc, index) => {
+      if (Date.now() >= deadline) {
+        console.log(`[generate-trip] Enrichment deadline reached, skipping "${loc.name}"`);
+        return null;
+      }
+
+      const found = await enrichOne(loc);
+      if (!found) {
+        console.log(`[generate-trip] No photo-verified result for "${loc.name}" in "${destination}"`);
+        return null;
+      }
+
+      const row = await admin.insertCard(deckId, index, loc, found);
+      if (!row) return found;
+
+      inserted += 1;
+      console.log(`[generate-trip] Inserted [${inserted}/${locations.length}]: "${found.title}"`);
+
+      // Fire-and-forget: the card is already visible via the hotlink, and the
+      // storage copy is a durability upgrade rather than part of first paint.
+      photoUpgrades.push(upgradePhoto(admin, row.id, found.thumbnail));
+
+      return found;
+    });
+
+    const startedAt = Date.now();
+    console.log(
+      `[generate-trip] Completed enrichment for "${destination}" in ${Date.now() - startedAt}ms: ` +
+        `${inserted}/${locations.length} spots with verified photos`
+    );
+
+    // A partial deck is still a usable deck, so only mark failed if we got
+    // nothing at all.
+    if (inserted === 0) {
+      return await fail("No locations could be photo-verified for this destination");
+    }
+
+    await admin.updateDeck(deckId, { status: "ready", card_count: inserted });
+
+    return json({ deckId, isGenerator: true, status: "ready", generated: true, count: inserted });
+  } catch (err) {
+    return await fail(String(err));
+  }
 });

@@ -23,7 +23,7 @@ const BEHAVIOUR_RISK = new Set([
 
 let out = "";
 try {
-  out = execFileSync("npx", ["oxlint"], { cwd: ROOT, encoding: "utf8" });
+  out = execFileSync("npx", ["oxlint", "-f", "unix"], { cwd: ROOT, encoding: "utf8" });
 } catch (err) {
   out = `${err.stdout || ""}`;
   if (err.status !== 0 && !out.trim()) {
@@ -35,7 +35,8 @@ try {
 const warnings = [];
 const seen = new Map();
 for (const line of out.split("\n")) {
-  const m = line.match(/^(.+?):(\d+):(\d+): warning (\S+):/);
+  // oxlint -f unix format: file:line:col: Message [Warning/rule(id)]
+  const m = line.match(/^(.+?):(\d+):(\d+): .+? \[Warning\/(\S+?)\]$/);
   if (!m) continue;
   const file = m[1].trim();
   const rule = m[4];

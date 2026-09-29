@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
-import { AlignLeft } from "phosphor-react";
 
 export default function RegisterScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = location.state?.returnTo || "/hub";
   const { signUp } = useAuth();
 
   const [username, setUsername] = useState("");
@@ -40,7 +41,7 @@ export default function RegisterScreen() {
         setVerifySentEmail(email.trim());
       } else {
         // Direct login if confirmation is disabled in Supabase
-        navigate("/hub");
+        navigate(returnTo);
       }
     } catch (err) {
       const msg = err?.message || "";

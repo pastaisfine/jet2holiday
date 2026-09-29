@@ -8,6 +8,7 @@ import DoneScreen from "./pages/DoneScreen";
 import ForgotPasswordScreen from "./pages/ForgotPasswordScreen";
 import GroupScreen from "./pages/GroupScreen";
 import HubScreen from "./pages/HubScreen";
+import JoinScreen from "./pages/JoinScreen";
 import LoginScreen from "./pages/LoginScreen";
 import PlanScreen from "./pages/PlanScreen";
 import ProfileScreen from "./pages/ProfileScreen";
@@ -40,6 +41,7 @@ const CHROME = {
   "/profile": { header: true, invert: false, back: "/hub", backLabel: "Trip", tabs: true, active: "profile" },
   "/forgot-password": { header: true, invert: false, back: "/login", backLabel: "Login", tabs: false },
   "/reset-password": { header: true, invert: false, tabs: false },
+  "/join/:tripId": { header: false, tabs: false },
 };
 
 function Shell() {
@@ -70,6 +72,7 @@ function Shell() {
     "/profile": <ProfileScreen useAppState={appState} />,
     "/forgot-password": <ForgotPasswordScreen />,
     "/reset-password": <ResetPasswordScreen />,
+    "/join/:tripId": <JoinScreen useAppState={appState} />,
   };
 
   return <AuthProvider><div className="stage"><div className="device"><BrowserRouter><Routes>{Object.entries(CHROME).map(([path, cfg]) => <Route key={path} path={path} element={<div className={`app${cfg.tabs ? " app--sidebar" : ""}`}>{cfg.header && <AppHeader invert={cfg.invert} trip={

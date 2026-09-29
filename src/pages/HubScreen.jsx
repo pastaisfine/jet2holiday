@@ -1,12 +1,12 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
-import { MEMBERS, AVATAR_COLORS } from "../data/members";
 import { TASKS } from "../data/tasks";
 import { HOTELS, FLIGHTS } from "../data/travel";
 import ProgressBar from "../components/ProgressBar";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { fmtDateRange, dayCount } from "../utils/date";
+import { getTripMembers, getTripSwipes, subscribeTripMembers, subscribeTripSwipes } from "../services/tripService";
 import { ArrowSquareOut } from "@phosphor-icons/react";
 
 
@@ -16,7 +16,7 @@ export default function HubScreen({ useAppState }) {
   const { profile } = useAuth();
   const {
     likes, skips, reasonCount, styleSeen, styleName, dest, startDate, endDate, activeStops,
-    hotel, flight, confirmedItineraryId
+    hotel, flight, confirmedItineraryId, tripId
   } = useAppState;
 
   const hotelPicked = typeof hotel === "object" && hotel ? hotel : HOTELS.find((h) => h.id === hotel);
@@ -70,13 +70,56 @@ export default function HubScreen({ useAppState }) {
 
 
   const mineDone = likes + skips > 0;
-  const doneCount = 3 + (mineDone ? 1 : 0);
   const dateRange = fmtDateRange(startDate, endDate);
   const days = startDate && endDate ? dayCount(startDate, endDate) : 3;
   const spiralItems = useMemo(
     () => activeStops.map((stop) => ({ id: stop.id, src: stop.img, alt: stop.name })),
     [activeStops],
   );
+
+  // Real members from DB
+  const [members, setMembers] = useState([]);
+  const [swipes, setSwipes] = useState([]);
+
+  const loadMembers = useCallback(async () => {
+    if (!tripId) return;
+    const m = await getTripMembers(tripId);
+    setMembers(m);
+  }, [tripId]);
+
+  const loadSwipes = useCallback(async () => {
+    if (!tripId) return;
+    const s = await getTripSwipes(tripId);
+    setSwipes(s);
+  }, [tripId]);
+
+  useEffect(() => {
+    loadMembers();
+    loadSwipes();
+  }, [loadMembers, loadSwipes]);
+
+  // Realtime subscriptions
+  useEffect(() => {
+    if (!tripId) return;
+    const unsubMembers = subscribeTripMembers(tripId, loadMembers);
+    const unsubSwipes = subscribeTripSwipes(tripId, loadSwipes);
+    return () => { unsubMembers(); unsubSwipes(); };
+  }, [tripId, loadMembers, loadSwipes]);
+
+  // Compute who has swiped based on real swipes data
+  const swipedUserIds = useMemo(() => {
+    const ids = new Set();
+    swipes.forEach((s) => ids.add(s.user_id));
+    return ids;
+  }, [swipes]);
+
+  const totalMembers = members.length;
+  const doneCount = members.filter((m) => swipedUserIds.has(m.userId)).length;
+  // Make sure current user's local swipes count too
+  const effectiveDoneCount = mineDone && profile?.id && !swipedUserIds.has(profile.id)
+    ? doneCount + 1
+    : doneCount;
+  const effectiveTotalMembers = totalMembers || 1;
 
   // Common card style based on brand-spec
   const cardStyle = {
@@ -115,6 +158,15 @@ export default function HubScreen({ useAppState }) {
     cursor: "pointer",
     display: "inline-block",
     textAlign: "center"
+  };
+
+  // Copy invite link
+  const inviteLink = tripId ? `${window.location.origin}/join/${tripId}` : null;
+  const [copied, setCopied] = useState(false);
+  const copyLink = async () => {
+    if (!inviteLink) return;
+    try { await navigator.clipboard.writeText(inviteLink); setCopied(true); setTimeout(() => setCopied(false), 1600); }
+    catch { setCopied(false); }
   };
 
   return (
@@ -157,7 +209,7 @@ export default function HubScreen({ useAppState }) {
               {days} days
             </span>
             <span style={{ background: "var(--accent)", color: "var(--accent-ink)", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600 }}>
-              4 friends
+              {effectiveTotalMembers} {effectiveTotalMembers === 1 ? "member" : "members"}
             </span>
           </div>
         </div>
@@ -344,8 +396,6 @@ export default function HubScreen({ useAppState }) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {TASKS.map(task => {
-              const member = MEMBERS.find(m => m.k === task.assignedTo);
-              const avatarColor = AVATAR_COLORS[task.assignedTo] || "var(--border)";
               const isDone = task.status === "done";
               return (
                 <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0" }}>
@@ -360,32 +410,29 @@ export default function HubScreen({ useAppState }) {
                   <div style={{ flex: 1, textDecoration: isDone ? "line-through" : "none", color: isDone ? "var(--muted)" : "var(--fg)", fontSize: 15, fontWeight: isDone ? 400 : 500 }}>
                     {task.title}
                   </div>
-                  <div style={{ background: avatarColor, width: 28, height: 28, borderRadius: 999, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--surface)", fontWeight: 600 }}>
-                    {member ? (member.k === "alice" ? (profile?.username || member.n) : member.n).slice(0, 1).toUpperCase() : "?"}
-                  </div>
                 </div>
               );
             })}
           </div>
 
-          {/* 1. Who's Swiped Section */}
+          {/* 1. Who's Swiped Section — Real members */}
           <section style={cardStyle}>
             <div>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Group alignment</h3>
               <div style={{ fontSize: 14, color: "var(--muted)", marginTop: 4 }}>
-                {doneCount} of 4 swiped. Reveal unlocks when ready.
+                {effectiveDoneCount} of {effectiveTotalMembers} swiped. Reveal unlocks when ready.
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
-              {MEMBERS.map((m) => {
-                const isUser = m.k === "alice";
-                const memberName = isUser ? (profile?.username || m.n) : m.n;
-                const finished = m.done || (isUser && mineDone);
+              {members.length > 0 ? members.map((m) => {
+                const isUser = m.userId === profile?.id;
+                const memberName = isUser ? (profile?.username || m.username) : m.username;
+                const finished = swipedUserIds.has(m.userId) || (isUser && mineDone);
                 return (
-                  <div key={m.k} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
+                  <div key={m.userId} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
                     <div style={{
-                      background: finished ? m.c : "var(--bg)",
+                      background: finished ? (m.avatarColor || "#F19A6A") : "var(--bg)",
                       border: finished ? "none" : "2px dashed var(--border)",
                       color: finished ? "var(--surface)" : "var(--muted)",
                       width: 52, height: 52, borderRadius: 999, fontSize: 20,
@@ -393,7 +440,7 @@ export default function HubScreen({ useAppState }) {
                     }}>
                       {memberName.slice(0, 1).toUpperCase()}
                     </div>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", marginTop: 8 }}>{memberName}</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", marginTop: 8 }}>{memberName}{isUser ? " (you)" : ""}</span>
                     <span style={{
                       fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",
                       marginTop: 4, color: finished ? "var(--fg)" : "var(--muted)",
@@ -404,9 +451,41 @@ export default function HubScreen({ useAppState }) {
                     </span>
                   </div>
                 );
-              })}
+              }) : (
+                // Fallback: just show current user if no trip members loaded yet
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
+                  <div style={{
+                    background: mineDone ? "#F19A6A" : "var(--bg)",
+                    border: mineDone ? "none" : "2px dashed var(--border)",
+                    color: mineDone ? "var(--surface)" : "var(--muted)",
+                    width: 52, height: 52, borderRadius: 999, fontSize: 20,
+                    display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600
+                  }}>
+                    {(profile?.username || "Y").slice(0, 1).toUpperCase()}
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", marginTop: 8 }}>{profile?.username || "You"}</span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",
+                    marginTop: 4, color: mineDone ? "var(--fg)" : "var(--muted)",
+                    background: mineDone ? "var(--accent)" : "transparent",
+                    padding: "2px 6px", borderRadius: 4
+                  }}>
+                    {mineDone ? "Ready" : "Waiting"}
+                  </span>
+                </div>
+              )}
             </div>
-            <ProgressBar value={Math.round((doneCount / 4) * 100)} height={8} color="var(--fg)" bgColor="var(--bg)" />
+            <ProgressBar value={Math.round((effectiveDoneCount / effectiveTotalMembers) * 100)} height={8} color="var(--fg)" bgColor="var(--bg)" />
+
+            {/* Share invite link in Hub */}
+            {inviteLink && (
+              <button
+                style={secondaryBtnStyle}
+                onClick={copyLink}
+              >
+                {copied ? "Invite Link Copied! ✓" : "Invite More Friends →"}
+              </button>
+            )}
           </section>
 
         </section>

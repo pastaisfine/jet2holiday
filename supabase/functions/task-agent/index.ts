@@ -78,30 +78,93 @@ Return the JSON array now:`;
 
         sendLog("Calling Gemini API streamGenerateContent...");
 
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: systemInstruction }] },
-              contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-              generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 4096,
-              },
-            }),
-          }
-        );
+        // Same ordering as generate-trip and preference, from a live probe of
+        // this project's key (2026-09-29):
+        //   gemini-3.5-flash         200, ~2.5s  — works
+        //   gemini-flash-lite-latest 200, ~0.9s  — works, fastest
+        //   gemini-3.6-flash         503 overloaded
+        //   gemini-flash-latest      hangs past 25s
+        //   gemini-3.1-pro-preview   429, separate tier with no quota on this plan
+        //
+        // This used to hardcode gemini-3.6-flash, the one currently overloaded,
+        // so task parsing failed on every call.
+        const GEMINI_MODELS = [
+          "gemini-3.5-flash",
+          "gemini-flash-lite-latest",
+          "gemini-3.6-flash",
+          "gemini-3.8-flash",
+        ];
 
-        if (!geminiRes.ok) {
-          const errBody = await geminiRes.text();
-          sendError(`Gemini API error ${geminiRes.status}: ${errBody}`);
+        const geminiBody = JSON.stringify({
+          system_instruction: { parts: [{ text: systemInstruction }] },
+          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 4096,
+          },
+        });
+
+        let geminiRes: Response | null = null;
+        const perModel: string[] = [];
+
+        for (const model of GEMINI_MODELS) {
+          try {
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                signal: AbortSignal.timeout(45_000),
+                body: geminiBody,
+              }
+            );
+
+            if (res.ok) {
+              geminiRes = res;
+              perModel.push(`${model}: ok`);
+              break;
+            }
+
+            // 404/403 is permanent for this key; 503/429 is capacity and worth
+            // a second try before moving on.
+            const permanent = res.status === 404 || res.status === 403;
+            const transient = res.status === 503 || res.status === 429;
+            perModel.push(
+              `${model}: ${res.status}${permanent ? " (unavailable)" : transient ? " (overloaded)" : ""}`
+            );
+            sendLog(`Model ${model} returned ${res.status}, trying next...`);
+            if (!transient) continue;
+
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const retry = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                signal: AbortSignal.timeout(45_000),
+                body: geminiBody,
+              }
+            );
+            if (retry.ok) {
+              geminiRes = retry;
+              perModel.push(`${model}: ok on retry`);
+              break;
+            }
+            perModel.push(`${model}: ${retry.status} on retry`);
+          } catch (err) {
+            perModel.push(`${model}: exception ${String(err).slice(0, 60)}`);
+          }
+        }
+
+        if (!geminiRes) {
+          sendError(
+            `Gemini unavailable across ${GEMINI_MODELS.length} models. Per-model: ${perModel.join(" | ")}`
+          );
           controller.close();
           return;
         }
 
-        sendLog("Receiving chunks from AI...");
+        sendLog(`Streaming from Gemini (${perModel[perModel.length - 1]})...`);
         let rawText = "";
 
         const reader = geminiRes.body!.getReader();
@@ -145,7 +208,13 @@ Return the JSON array now:`;
 
         const sanitize = (arr: unknown[]) =>
           arr
-            .filter((t): t is Record<string, unknown> => typeof t === "object" && t !== null && typeof t.title === "string" && t.title.trim().length > 0)
+            .filter((t): t is { title: string; description?: string } => {
+              // Narrow via a local rather than touching properties on the
+              // `object` type, which cannot be indexed directly.
+              if (typeof t !== "object" || t === null) return false;
+              const rec = t as Record<string, unknown>;
+              return typeof rec.title === "string" && rec.title.trim().length > 0;
+            })
             .map((t) => ({
               title: String(t.title).trim(),
               description: typeof t.description === "string" ? t.description.trim() : "",

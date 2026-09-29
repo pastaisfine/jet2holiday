@@ -33,6 +33,7 @@ const DEFAULT_STATE = {
   pipelineCompleted: false,
   pipelineDest: "",
   pipelineThinFallback: false,
+  tripId: null,
 };
 
 function isDefaultItinerary(id) {
@@ -67,10 +68,38 @@ function load() {
   return { ...DEFAULT_STATE };
 }
 
-function save(state) {
+// Streaming appends a card every few hundred ms, and each append called
+// save(). Serialising the whole state to localStorage synchronously, twice per
+// card, blocked the main thread mid-stream - so writes are coalesced onto a
+// trailing timer and flushed eagerly when the page goes away.
+const SAVE_DEBOUNCE_MS = 250;
+let saveTimer = null;
+let pendingSave = null;
+
+function flushSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (!pendingSave) return;
+  const state = pendingSave;
+  pendingSave = null;
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(state));
   } catch {}
+}
+
+function save(state) {
+  pendingSave = state;
+  if (saveTimer) return;
+  saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", flushSave);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushSave();
+  });
 }
 
 export function useAppState() {
@@ -318,6 +347,29 @@ export function useAppState() {
     });
   }, []);
 
+  const setTripId = useCallback((tripId) => {
+    setState((prev) => {
+      const next = { ...prev, tripId };
+      save(next);
+      return next;
+    });
+  }, []);
+
+  const loadTrip = useCallback((trip) => {
+    if (!trip) return;
+    setState((prev) => {
+      const next = {
+        ...prev,
+        tripId: trip.id,
+        dest: trip.destination || prev.dest,
+        startDate: trip.start_date || prev.startDate,
+        endDate: trip.end_date || prev.endDate,
+      };
+      save(next);
+      return next;
+    });
+  }, []);
+
   const addTasks = useCallback((taskArray, createdBy) => {
     setState((prev) => {
       const newTasks = taskArray.map((t) => ({
@@ -450,6 +502,8 @@ export function useAppState() {
     markPipelineCompleted,
     resetTrip,
     savePreferenceProfile,
+    setTripId,
+    loadTrip,
     addTasks,
     acceptTask,
     completeTask,

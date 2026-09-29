@@ -236,6 +236,7 @@ export default function InfiniteSpiral({
                 className="infinite-spiral__image"
                 src={item.src}
                 alt={item.alt}
+                referrerPolicy="no-referrer"
                 loading={index < 6 ? "eager" : "lazy"}
                 draggable={false}
                 style={{

@@ -85,7 +85,7 @@ function DroppableStop({ stop, index, stops, open, menuId, setOpen, setMenuId, s
             <div className="stop-top" onClick={() => setOpen((prev) => ({ ...prev, [stop.id]: !prev[stop.id] }))}>
               <button ref={handleRef} className="drag-handle" aria-label={`Long press to drag ${stop.name}`} onClick={(event) => event.stopPropagation()}>⠿</button>
               <span className="drag-hint">Long press to drag</span>
-              <div className="th"><img src={stop.img} alt={`${stop.name} in Lisbon`} /></div>
+              <div className="th"><img src={stop.img} alt={stop.area ? `${stop.name}, ${stop.area}` : stop.name} referrerPolicy="no-referrer" /></div>
               <div><div className="nm">{stop.name}</div><div className="ar">{stop.area}</div></div>
               <button className="stop-menu-button" aria-label={`Edit ${stop.name}`} onClick={(event) => { event.stopPropagation(); setMenuId(menuId === stop.id ? null : stop.id); }}>•••</button>
               <svg className="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>

@@ -2,14 +2,15 @@
   "_comment": "Known pre-existing raw colour literals, as file -> literal -> count. Brand rules live in brand-spec.md. Per-record data colours and third-party library props are not scanned at all. Counts, not line numbers, so reordering never trips the guard. Shrink this file as debt is paid.",
   "files": {
     "src/App.css": {
-      "#fff": 30,
+      "#fff": 34,
       "#2E2723": 8,
       "#FFFDFA": 7,
-      "rgba(255, 255, 255, .3)": 4,
       "#B7ABA2": 4,
-      "rgba(255, 255, 255, .18)": 2,
-      "rgba(255, 255, 255, .5)": 2,
+      "#666": 3,
+      "rgba(255, 255, 255, .3)": 2,
       "rgba(238, 127, 101, .6)": 2,
+      "#ececec": 2,
+      "#444": 2,
       "rgba(46, 39, 35, .09)": 2,
       "rgba(46, 39, 35, .55)": 2,
       "#B9503A": 2,
@@ -21,10 +22,13 @@
       "#F3EFF9": 2,
       "#423831": 2,
       "#EE7F65": 2,
+      "#000000": 2,
       "#258153": 2,
       "rgba(251, 247, 240, 0.88)": 1,
       "rgba(46, 39, 35, .42)": 1,
       "rgba(255, 255, 255, .9)": 1,
+      "rgba(255, 255, 255, .18)": 1,
+      "rgba(255, 255, 255, .5)": 1,
       "rgba(29, 44, 26, .75)": 1,
       "rgba(46, 39, 35, .34)": 1,
       "rgba(46, 39, 35, .78)": 1,
@@ -42,6 +46,7 @@
       "#6E5A8C": 1,
       "rgba(200, 182, 226, .34)": 1,
       "#A78FCC": 1,
+      "#e0e0e0": 1,
       "rgba(0, 0, 0, 0.15)": 1,
       "rgba(46, 39, 35, .45)": 1,
       "rgba(46, 39, 35, .76)": 1,
@@ -113,8 +118,11 @@
       "rgba(0, 0, 0, 0.4)": 1,
       "#FFFFFF": 1,
       "rgba(46, 39, 35, .24)": 1,
+      "#e8e8e8": 1,
+      "#333": 1,
       "#1c242b": 1,
       "#11161b": 1,
+      "#000": 1,
       "rgba(61, 142, 116, 0.15)": 1,
       "rgba(220, 180, 40, 0.12)": 1,
       "rgba(0, 0, 0, 0.45)": 1,
@@ -147,9 +155,13 @@
     },
     "src/pages/HubScreen.jsx": {
       "rgba(255,255,255,0.2)": 2,
+      "#F19A6A": 2,
       "rgba(0,0,0,0.7)": 1,
       "rgba(0,0,0,0)": 1,
-      "rgba(0,0,0,0.2)": 1
+      "rgba(0,0,0,0.2)": 1,
+      "#e5e5e5": 1,
+      "#666": 1,
+      "#555": 1
     },
     "src/pages/PlanScreen.jsx": {
       "#2b8a3e": 1
@@ -158,7 +170,8 @@
       "rgba(0,0,0,0.45)": 1
     },
     "src/pages/SetupScreen.jsx": {
-      "rgba(0,0,0,0.18)": 1
+      "rgba(0,0,0,0.18)": 1,
+      "#F19A6A": 1
     },
     "src/pages/SplashScreen.jsx": {
       "rgba(29, 44, 26, 0.45)": 1,

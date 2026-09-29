@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 
 export default function LoginScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = location.state?.returnTo || "/hub";
   const { signIn } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -30,7 +32,7 @@ export default function LoginScreen() {
         setSubmitting(false);
         return;
       }
-      navigate("/hub");
+      navigate(returnTo);
     } catch (err) {
       const msg = err?.message || "";
       if (msg.toLowerCase().includes("invalid login credentials")) {

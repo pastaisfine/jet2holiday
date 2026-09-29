@@ -36,7 +36,20 @@ export default function SwipeCard({ card, onVerdict, onDetail, stacked }) {
       }}
     >
       <div className="ph" style={{ position: "absolute", inset: 0, zIndex: 0 }}>
-        <img src={card.img} alt={`${card.name} in Lisbon`} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        {card.img ? (
+          <img
+            src={card.img}
+            alt={card.area ? `${card.name}, ${card.area}` : card.name}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            onError={(e) => {
+              // Reveal the .ph gradient underneath rather than showing a broken
+              // image icon. The card stays swipeable either way.
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        ) : null}
         <div className="veil" style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(46, 39, 35, 0.1) 0%, transparent 20%, rgba(29, 44, 26, 0.4) 60%, rgba(29, 44, 26, 0.95) 100%)" }} />
         <div className="topline">
           <span className="chip" style={chipInline}>{card.cat.join(" · ")}</span>
