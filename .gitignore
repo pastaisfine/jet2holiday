@@ -37,4 +37,5 @@ skills.lock.json
 .supabase
 .supabase/
 supabase/.temp/
-/migrations/
+supabase/migrations/
+migrations/
