@@ -7,14 +7,20 @@ import InfiniteSpiral from "../components/InfiniteSpiral";
 
 export default function StyleScreen({ useAppState }) {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile,session } = useAuth();
   const userName = profile?.username || "Alice";
-  const { likes, skips, reasonCount, tagged, markStyleSeen, allCards, preferenceProfiles } = useAppState;
+  const { likes, skips, reasonCount, tagged, markStyleSeen, allCards, preferenceProfiles, dest, } = useAppState;
+  const preferenceAnalysisKey =
+  profile?.id
+    ? `tripder-preference-summary:${profile.id}:${useAppState.dest || "Lisbon, Portugal"}`
+    : null;
   const preferences = preferenceProfiles?.[profile?.id || profile?.username || "guest"];
 
   const [aiSummary, setAiSummary] = useState(() => {
       try {
-        const stored = sessionStorage.getItem("tripder-preference-summary");
+        const stored = preferenceAnalysisKey
+        ? sessionStorage.getItem(preferenceAnalysisKey)
+        : null;
         return stored ? JSON.parse(stored) : {};
       } catch {
         return {};
@@ -23,14 +29,16 @@ export default function StyleScreen({ useAppState }) {
 
   useEffect(() => {
       try {
-        const stored = sessionStorage.getItem("tripder-preference-summary");
+       const stored = preferenceAnalysisKey
+      ? sessionStorage.getItem(preferenceAnalysisKey)
+      : null;
         if (stored) {
           setAiSummary(JSON.parse(stored));
         }
       } catch (error) {
         console.error("Failed to parse sessionStorage:", error);
       }
-    }, []);
+    }, [preferenceAnalysisKey]);
 
  const style = useMemo(() => ({
     name: aiSummary.styleName || "Curious Explorer",

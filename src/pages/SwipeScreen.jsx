@@ -84,6 +84,9 @@ export default function SwipeScreen({ useAppState }) {
   const pipeline = usePipeline();
   const preferenceId = profile?.id || profile?.username || "guest";
   const ingestedRef = useRef(0);
+  const preferenceAnalysisKey = session?.user?.id
+  ? `tripder-preference-summary:${session.user.id}:${dest || LISBON_FALLBACK}`
+  : null;
   const currentSwipeIdRef = useRef(null);
   const preferenceAnalysisStartedRef = useRef(false);
   const lastSwipePersistRef = useRef(Promise.resolve());
@@ -143,10 +146,12 @@ export default function SwipeScreen({ useAppState }) {
       );
     }
 
-    sessionStorage.setItem(
-      "tripder-preference-summary",
-      JSON.stringify(result.summary)
-    );
+    if (preferenceAnalysisKey) {
+      sessionStorage.setItem(
+        preferenceAnalysisKey,
+        JSON.stringify(result.summary)
+      );
+    }
 
     setPreferenceAnalysisStatus("success");
   } catch (error) {
@@ -163,6 +168,7 @@ export default function SwipeScreen({ useAppState }) {
   profile,
   preferences,
   dest,
+  preferenceAnalysisKey,
 ]);
 
 
@@ -394,8 +400,15 @@ useEffect(() => {
   if (!session?.user?.id) return;
   if (preferenceAnalysisStartedRef.current) return;
 
-  preferenceAnalysisStartedRef.current = true;
+  // Already analysed for this user + destination.
+  // Reuse the cached result instead of calling the AI again.
+  if (preferenceAnalysisKey && sessionStorage.getItem(preferenceAnalysisKey)) {
+    preferenceAnalysisStartedRef.current = true;
+    setPreferenceAnalysisStatus("success");
+    return;
+  }
 
+  preferenceAnalysisStartedRef.current = true;
   runPreferenceAnalysis();
 }, [
   idx,
@@ -403,9 +416,9 @@ useEffect(() => {
   sheets.reason,
   pipeline.phase,
   session,
+  preferenceAnalysisKey,
   runPreferenceAnalysis,
 ]);
-
   const openDetail = (card) => {
     setDetailCard(card || (idx < total ? visibleCards[idx] : null));
     dispatchSheets({ type: "detail" });
@@ -585,18 +598,23 @@ return (
                         : "Preparing your summary…"}
                   </button>
 
-                 {preferenceAnalysisStatus === "error" && (
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => {
-                        preferenceAnalysisStartedRef.current = true;
-                        runPreferenceAnalysis();
-                      }}
-                    >
-                      Try again
-                    </button>
-                  )}
+                {(preferenceAnalysisStatus === "success" ||
+  preferenceAnalysisStatus === "error") && (
+  <button
+    className="btn btn-secondary"
+    style={{ marginTop: 8 }}
+    onClick={() => {
+      if (preferenceAnalysisKey) {
+        sessionStorage.removeItem(preferenceAnalysisKey);
+      }
 
+      preferenceAnalysisStartedRef.current = true;
+      runPreferenceAnalysis();
+    }}
+  >
+    Retry analysis
+  </button>
+)}
                   <button className="btn btn-secondary" style={{ marginTop: 8 }} onClick={() => dispatchSheets({ type: "addPlace" })}>
                     More itineraries on your mind?
                   </button>
