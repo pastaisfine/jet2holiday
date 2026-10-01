@@ -5,7 +5,7 @@ import { useAuth } from "../context/useAuth";
 export default function LoginScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const returnTo = location.state?.returnTo || "/hub";
+  const returnTo = location.state?.returnTo || "/setup/step1";
   const { signIn } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -115,19 +115,16 @@ export default function LoginScreen() {
         </div>
 
         <div className="auth-footer">
-          <p style={{ fontSize: 13, color: "var(--muted)", margin: "14px 0 8px" }}>
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: "14px 0 0" }}>
             Don't have an account?{" "}
             <Link to="/register" className="auth-link">
               Create an account
             </Link>
           </p>
-          <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0 }}>
-            <Link to="/hub" className="auth-link-subtle">
-              Continue exploring as guest →
-            </Link>
-          </p>
         </div>
+
       </div>
+
     </section>
   );
 }

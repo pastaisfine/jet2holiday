@@ -6,10 +6,26 @@ const CORS = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// The six-value category vocabulary, shared with CATEGORY_TO_STYLE in
+// generate-trip. Duplicated here rather than imported because the two
+// functions are deployed independently, and a wrong value is rejected on the
+// way in anyway -- so drift surfaces as a dropped category, not a crash.
+const CATEGORIES = [
+  "food",
+  "culture",
+  "nature",
+  "shopping",
+  "nightlife",
+  "wellness",
+] as const;
+
 type Swipe = {
   card_name?: string;
   direction?: string;
   reasons?: string[];
+  // NULL in the DB and here: a user-added place has no category anywhere in
+  // the system, so those swipes count toward totals but not the category tally.
+  category?: string | null;
 };
 
 type Profile = {
@@ -116,12 +132,81 @@ Deno.serve(async (req: Request) => {
             : "unknown",
         reasons: Array.isArray(swipe.reasons)
           ? swipe.reasons
-              .filter((reason) => typeof reason === "string")
-              .map((reason) => reason.trim())
-              .filter(Boolean)
+            .filter((reason) => typeof reason === "string")
+            .map((reason) => reason.trim())
+            .filter(Boolean)
           : [],
+        // An unrecognised category becomes null rather than being passed
+        // through: a value the model has not been told about is worse than a
+        // gap it knows to discount.
+        category: CATEGORIES.includes(
+          swipe.category as (typeof CATEGORIES)[number]
+        )
+          ? swipe.category
+          : null,
       }))
       .filter((swipe) => swipe.card_name.length > 0);
+
+    // Category tallies, computed here rather than left to the model.
+    //
+    // A flash model at temperature 0.2 cannot reliably count 19 swipes into six
+    // buckets, and a miscount would surface as a confident wrong claim like
+    // "rejected all 3 food venues" when it was 1 of 3. Doing the arithmetic
+    // deterministically costs a few dozen tokens and makes the pattern the
+    // strongest thing in the prompt.
+    const categoryTally = CATEGORIES.map((category) => {
+      const matching = normalizedSwipes.filter(
+        (swipe) => swipe.category === category
+      );
+
+      return {
+        category,
+        likes: matching.filter((swipe) => swipe.direction === "like").length,
+        skips: matching.filter((swipe) => swipe.direction === "skip").length,
+      };
+    }).filter((row) => row.likes > 0 || row.skips > 0);
+
+    const uncategorizedCount = normalizedSwipes.filter(
+      (swipe) => swipe.category === null
+    ).length;
+
+    // Reason frequency, computed the same way as the category tally: the model
+    // cannot count reliably, and an invented quote is worse than a missing one.
+    //
+    // A reason counts once per swipe it appeared in, so a traveller who ticked
+    // the same chip on five places has used it five times. Only freestanding
+    // text is quoted back -- it is the words they chose rather than a label
+    // they were handed, which is what makes them worth showing.
+    const reasonTallyFor = (direction: "like" | "skip") => {
+      const counts = new Map<string, number>();
+
+      for (const swipe of normalizedSwipes) {
+        if (swipe.direction !== direction) continue;
+
+        for (const reason of swipe.reasons) {
+          counts.set(reason, (counts.get(reason) || 0) + 1);
+        }
+      }
+
+      return [...counts.entries()]
+        .map(([reason, count]) => ({ reason, count }))
+        .sort(
+          (a, b) => b.count - a.count || a.reason.localeCompare(b.reason)
+        )
+        .slice(0, 6);
+    };
+
+    const reasonTally = {
+      liked: reasonTallyFor("like"),
+      skipped: reasonTallyFor("skip"),
+    };
+
+    // Swipes that carried at least one reason, not the total number of reasons.
+    // The client phrases this as "N with a reason", which cannot exceed the
+    // swipe count -- a raw chip total could, and would read as indecision.
+    const reasonedSwipeCount = normalizedSwipes.filter(
+      (swipe) => swipe.reasons.length > 0
+    ).length;
 
     const systemInstruction = `
 You are the Preference Agent for a group travel planning application.
@@ -171,6 +256,36 @@ Rules:
 - Return valid JSON only.
 - No markdown.
 - No explanation outside the JSON object.
+
+Using the category evidence:
+- The category tally below is precomputed and exact. Trust those numbers over
+  your own reading of the swipe list, and quote them when you cite a pattern
+  ("rejected all 3 food venues", not "seemed wary of food").
+- A category where every swipe was a skip is a strong signal. One where every
+  swipe was a like is a strong signal. A category split between the two is weak
+  evidence, and one with a single swipe proves nothing on its own.
+- "food" and "nightlife" are broad: a traveller who skipped two food venues has
+  not rejected food. Say what the evidence covers ("skipped both market stalls",
+  not "does not like food markets") unless the count genuinely supports the
+  broader claim.
+- Swipes with no category are missing data, not evidence of anything. Exclude
+  them from any category claim rather than treating them as a seventh category.
+- A traveller can like a place's neighbourhood while skipping what is in it.
+  When the tally shows a liked card and a skipped card from the same area, the
+  category split is the more useful read.
+- Put category findings to work in the fields above. A category pattern belongs
+  in "dislikes", "interests" or "priorities" backed by its count -- it is not a
+  separate finding to be invented for.
+
+Naming the traveller:
+- styleName may only name a category the tally shows at least one LIKE for.
+  A traveller who skipped every food venue is not a food person, whatever else
+  their profile says.
+- Prefer the categories with the most likes. If the tally is empty, name no
+  category at all -- a neutral name is always better than an unfounded one.
+- The client re-checks styleName against this same tally and replaces it with a
+  neutral one if it fails, so an unsupported name is thrown away rather than
+  shown. Do not pad the name with categories to sound interesting.
 `;
 
     const userPrompt = `
@@ -185,6 +300,10 @@ ${JSON.stringify(initialPreferences, null, 2)}
 
 Swipe decisions:
 ${JSON.stringify(normalizedSwipes, null, 2)}
+
+Category tally (precomputed, exact):
+${JSON.stringify(categoryTally)}
+Swipes with no category: ${uncategorizedCount} of ${normalizedSwipes.length}
 
 Analyse this traveller's preferences and return the required JSON object.
 `;
@@ -423,6 +542,16 @@ Analyse this traveller's preferences and return the required JSON object.
         metadata: {
           destination,
           swipeCount: normalizedSwipes.length,
+          // The tally is returned, not just rendered into the prompt, so the
+          // numbers behind any claim in the summary can be checked later
+          // without re-running the analysis.
+          categoryTally,
+          uncategorizedCount,
+          // Swipes that carried a reason, and which reasons those were. The
+          // client renders these verbatim, so they have to be the traveller's
+          // own words rather than a paraphrase.
+          reasonedSwipeCount,
+          reasonTally,
         },
       }),
       {

@@ -9,7 +9,8 @@ import { useAuth } from "../context/useAuth";
 import { usePipeline, startPipeline } from "../services/generateTrip";
 import { supabase } from "../lib/supabase";
 import { CARD_DATA } from "../data/cards";
-import { analyzePreferences } from "../services/preference";
+import { normaliseStoredPreferences } from "../lib/preferenceProfile";
+import { analyzePreferences, savePreferenceSummary } from "../services/preference";
 import { preloadImage } from "../services/imagePreloader";
 import { getTripDeckId } from "../services/tripService";
 
@@ -17,10 +18,10 @@ const LISBON_FALLBACK = "Lisbon, Portugal";
 
 const initialSheets = { reason: false, detail: false, addPlace: false, more: false };
 const preferenceOptions = {
-  rhythm: ["Early start", "Balanced", "Relaxed mornings", "No preference"],
-  density: ["Packed", "Balanced", "Unstructured", "No preference"],
-  dining: ["Street food", "Cafes", "Quick service", "Fine dining", "No preference"],
-  foodBudget: ["Value-focused", "Balanced", "Food is a highlight", "No preference"],
+  rhythm: ["Early start", "Balanced", "Relaxed mornings", "Flexible"],
+  density: ["Packed", "Balanced", "Unstructured", "Flexible"],
+  dining: ["Street food", "Cafes", "Quick service", "Fine dining", "Flexible"],
+  foodBudget: ["Value-focused", "Balanced", "Food is a highlight", "Flexible"],
   dietary: ["None", "Vegetarian", "Vegan", "Halal", "Kosher", "Gluten-free", "Dairy-free", "Nut allergy", "Other"],
 };
 const emptyPreferences = { rhythm: "", density: "", dietary: [], dining: "", foodBudget: "", note: "" };
@@ -92,7 +93,7 @@ export default function SwipeScreen({ useAppState }) {
   const [preferenceAnalysisStatus, setPreferenceAnalysisStatus] =
   useState("idle");
 
-  const [preferences, setPreferences] = useState(() => ({ ...emptyPreferences, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
+  const [preferences, setPreferences] = useState(() => normaliseStoredPreferences({ ...emptyPreferences, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
 
   const runPreferenceAnalysis = useCallback(async () => {
   setPreferenceAnalysisStatus("loading");
@@ -102,11 +103,22 @@ export default function SwipeScreen({ useAppState }) {
 
     const destination = dest || LISBON_FALLBACK;
 
-    const { data, error } = await supabase
+    // Scoped to the trip, not just the destination. A destination is only a
+    // city name, so filtering on it alone would average together every trip the
+    // user has ever taken to that city -- two Kuala Lumpur trips with different
+    // people would produce one summary spanning both, which is then saved
+    // against this trip alone. Falls back to the destination when the user is
+    // not in a trip yet, which is when the swipes carry a null trip_id too.
+    let query = supabase
       .from("swipes")
-      .select("card_name, direction, reasons")
-      .eq("user_id", session.user.id)
-      .eq("destination", destination);
+      .select("card_name, direction, reasons, category")
+      .eq("user_id", session.user.id);
+
+    query = tripId
+      ? query.eq("trip_id", tripId)
+      : query.eq("destination", destination);
+
+    const { data, error } = await query;
 
     if (error) {
       throw error;
@@ -118,6 +130,7 @@ export default function SwipeScreen({ useAppState }) {
       reasons: Array.isArray(swipe.reasons)
         ? swipe.reasons
         : [],
+      category: swipe.category || null,
     }));
 
     const result = await analyzePreferences({
@@ -143,10 +156,38 @@ export default function SwipeScreen({ useAppState }) {
       );
     }
 
+    // metadata carries the counts the summary cannot state about itself -- how
+    // many swipes it was derived from, and the exact category tally behind any
+    // claim in it. It travelled this far and was being dropped on the floor,
+    // leaving the style screen unable to say how much evidence it was standing
+    // on. Storing it under the same key is a deliberate break with the previous
+    // shape; the style screen reads both halves and tolerates a bare summary,
+    // so a tab that was mid-analysis when this shipped still renders.
     sessionStorage.setItem(
       "tripder-preference-summary",
-      JSON.stringify(result.summary)
+      JSON.stringify({
+        summary: result.summary,
+        metadata: result.metadata,
+      })
     );
+
+    // sessionStorage above is only a hand-off to the style screen, which reads
+    // it on mount; this is the copy that survives the tab. A failed write must
+    // not strand the user on a spinner -- the analysis itself succeeded, and the
+    // next run overwrites whatever is missing.
+    try {
+      await savePreferenceSummary({
+        summary: result.summary,
+        metadata: result.metadata,
+        tripId,
+        destination,
+      });
+    } catch (saveError) {
+      console.error(
+        "[Preference Agent] Failed to persist summary:",
+        saveError
+      );
+    }
 
     setPreferenceAnalysisStatus("success");
   } catch (error) {
@@ -163,12 +204,13 @@ export default function SwipeScreen({ useAppState }) {
   profile,
   preferences,
   dest,
+  tripId,
 ]);
 
 
   useEffect(() => {
     const saved = preferenceProfiles?.[preferenceId];
-    if (saved) setPreferences({ ...emptyPreferences, ...saved, dietary: saved.dietary || [] });
+    if (saved) setPreferences(normaliseStoredPreferences({ ...emptyPreferences, ...saved, dietary: saved.dietary || [] }));
     if (sessionStorage.getItem("edit-preferences") === "true") {
       sessionStorage.removeItem("edit-preferences");
       setPreferenceOpen(true);
@@ -347,6 +389,10 @@ export default function SwipeScreen({ useAppState }) {
           user_id: session.user.id,
           card_id: String(card.id),
           card_name: card.name,
+          // Lets the Preference Agent see that a skipped place was a food venue
+          // rather than inferring it from the name. Null for user-added places,
+          // which have no category anywhere in the system.
+          category: card.category || null,
           destination: dest || LISBON_FALLBACK,
           direction: dir === "yes" ? "like" : "skip",
           reasons: finalReasons,
@@ -445,6 +491,11 @@ useEffect(() => {
       name: placeSelected.mainText,
       area: placeSelected.secondaryText || "Custom location",
       cat: ["Custom"],
+      // Left null deliberately. The autocomplete proxy returns a bare slug with
+      // no category (see supabase/functions/places-autocomplete), so anything
+      // set here would be a guess. The swipe records the gap honestly and the
+      // agent simply has no category signal for this card.
+      category: null,
       cost: "—",
       img: placeSelected.mapImageUrl || "/images/alfama.jpg",
       blurb: placeSelected.description,
@@ -699,7 +750,17 @@ return (
                 </button>
               </div>
               <div className="dname">{detailCard.name}</div>
-              <div className="area">{detailCard.area} · {detailCard.cat.join(" / ")} · {detailCard.cost}</div>
+              <div className="area">
+                {detailCard.area} · {detailCard.cat.join(" / ")} · {detailCard.cost}
+                {detailCard.reviewCount != null && (
+                  <> · {detailCard.reviewCount.toLocaleString()} reviews</>
+                )}
+                {detailCard.estimatedDuration != null && (
+                  <> · ⏱ {detailCard.estimatedDuration < 60
+                    ? `${detailCard.estimatedDuration} min`
+                    : `${Math.round(detailCard.estimatedDuration / 60 * 10) / 10} hr`}</>
+                )}
+              </div>
               <div className="rows" style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
                 {(detailCard.likeR || detailCard.noR).slice(0, 3).map((t) => (
                   <span key={t} className="chip">{t}</span>
@@ -823,7 +884,7 @@ return (
             <button className="btn btn-secondary" onClick={() => dispatchSheets({ type: "close" })}>
               Not yet
             </button>
-            <button className="btn btn-primary" onClick={() => navigate("/setup")}>
+            <button className="btn btn-primary" onClick={() => navigate("/setup/step1")}>
               Start a trip
             </button>
           </div>

@@ -54,6 +54,13 @@ export default function SwipeCard({ card, onVerdict, onDetail, stacked }) {
         <div className="topline">
           <span className="chip" style={chipInline}>{card.cat.join(" · ")}</span>
           <span className="chip" style={chipInline}>{card.cost}</span>
+          {card.estimatedDuration != null && (
+            <span className="chip" style={chipInline}>
+              ⏱ {card.estimatedDuration < 60
+                ? `${card.estimatedDuration} min`
+                : `${Math.round(card.estimatedDuration / 60 * 10) / 10} hr`}
+            </span>
+          )}
         </div>
         <motion.div className="sw-verdict no" style={stacked === 0 ? { opacity: noOpacity } : {}}>SKIP</motion.div>
         <motion.div className="sw-verdict yes" style={stacked === 0 ? { opacity: yesOpacity } : {}}>GO</motion.div>

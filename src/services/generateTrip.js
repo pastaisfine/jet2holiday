@@ -127,7 +127,9 @@ export async function startPipeline({
           emit({ expectedCount: deck.location_count });
         }
         if (deck.status === "ready") {
-          emit({ phase: "done", expectedCount: state.expectedCount || deck.card_count || 0 });
+          // error: null because an earlier optimistic failure (e.g. "someone
+          // else is generating") must not outlive the deck it was reported for.
+          emit({ phase: "done", expectedCount: state.expectedCount || deck.card_count || 0, error: null });
         } else if (deck.status === "failed") {
           emit({ phase: state.cards.length > 0 ? "done" : "error", error: deck.error_message });
         }
@@ -149,7 +151,7 @@ export async function startPipeline({
 
     // Nothing to do if the deck is complete, unless the caller is regenerating.
     if (existing.status === "ready" && !force) {
-      emit({ phase: "done", expectedCount: existing.location_count || cards.length });
+      emit({ phase: "done", expectedCount: existing.location_count || cards.length, error: null });
       return;
     }
   }
@@ -182,9 +184,14 @@ export async function startPipeline({
     // only settles the case where nothing else can: a cache hit, or a failure
     // with no rows to show.
     if (payload.status === "ready") {
-      emit({ phase: "done", expectedCount: state.expectedCount || payload.count || 0 });
+      emit({ phase: "done", expectedCount: state.expectedCount || payload.count || 0, error: null });
     } else if (payload.status === "failed" && !payload.generated) {
       emit({ phase: state.cards.length > 0 ? "done" : "error", error: payload.error });
+    } else if (payload.status === "pending" && state.cards.length === 0) {
+      // Another user holds the claim, so this request generated nothing and no
+      // status event is coming for us. Leaving the phase alone parks the user
+      // on "Curating…" forever, so say what is actually happening instead.
+      emit({ phase: "error", error: "Someone else is generating this deck right now. Try again shortly." });
     }
   } catch (err) {
     // A dropped connection does not cancel generation: the edge function keeps

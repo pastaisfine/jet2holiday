@@ -5,6 +5,7 @@ import { useAuth } from "../context/useAuth";
 import { dayCount } from "../utils/date";
 import BottomSheet from "../components/BottomSheet";
 import PreferenceForm, { EMPTY_PREFERENCES } from "../components/PreferenceForm";
+import { normaliseStoredPreferences } from "../lib/preferenceProfile";
 import { searchPlaces } from "../services/placesAutocomplete";
 import { createOrUpdateTrip } from "../services/tripService";
 import { resetPipeline, startPipeline } from "../services/generateTrip";
@@ -38,7 +39,7 @@ export default function SetupScreen({ useAppState }) {
   const { preferenceProfiles, savePreferenceProfile } = useAppState;
   const preferenceId = profile?.id || profile?.username || "guest";
   const [preferenceOpen, setPreferenceOpen] = useState(false);
-  const [preferences, setPreferences] = useState(() => ({ ...EMPTY_PREFERENCES, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
+  const [preferences, setPreferences] = useState(() => normaliseStoredPreferences({ ...EMPTY_PREFERENCES, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
   const [localStart, setLocalStart] = useState(() => savedStart ? new Date(savedStart) : null);
   const [localEnd, setLocalEnd] = useState(() => savedEnd ? new Date(savedEnd) : null);
   const [destSuggestions, setDestSuggestions] = useState([]);

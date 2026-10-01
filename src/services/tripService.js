@@ -360,19 +360,30 @@ export async function getDeckCards(deckId) {
  * `img` prefers the storage copy and falls back to the hotlink. A row with
  * neither still produces a card: `img: ""` drives the placeholder render, so a
  * dead thumbnail costs us a picture rather than a whole suggestion.
+ *
+ * Column names reflect the v2 schema (20261007_trip_cards_schema_v2):
+ *   thumbnail_url  (was img_url)
+ *   latitude       (was lat)
+ *   longitude      (was lng)
+ *   address_or_area (was address)
+ *   estimated_duration_min (new)
+ *   review_count           (new)
  */
 export function deckRowToCard(row) {
   const publicUrl = row.img_storage_path
     ? supabase.storage.from(PHOTO_BUCKET).getPublicUrl(row.img_storage_path).data.publicUrl
-    : row.img_url;
+    : row.thumbnail_url;
 
   const category = row.category || "culture";
   return {
     id: row.place_id ? `gen-${row.place_id}` : `gen-${row.id}`,
     deckCardId: row.id,
     name: row.name,
-    area: row.address || "",
+    area: row.address_or_area || "",
     cat: [category.charAt(0).toUpperCase() + category.slice(1)],
+    // Already normalised to the enum upstream: generate-trip falls back to
+    // "culture" for an unrecognised category, so this needs no extra guarding.
+    category,
     cost: typeof row.rating === "number" ? `★ ${row.rating}` : "—",
     img: publicUrl || "",
     blurb: row.description || "",
@@ -381,11 +392,13 @@ export function deckRowToCard(row) {
     likeR: [],
     noR: [],
     detail: [],
-    lat: row.lat ?? null,
-    lng: row.lng ?? null,
+    lat: row.latitude ?? null,
+    lng: row.longitude ?? null,
     styleHint: row.style_hint || "balanced",
     rating: row.rating ?? null,
-    address: row.address || "",
+    reviewCount: row.review_count ?? null,
+    estimatedDuration: row.estimated_duration_min ?? null,
+    address: row.address_or_area || "",
     generated: true,
   };
 }

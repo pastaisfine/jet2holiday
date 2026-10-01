@@ -1,9 +1,20 @@
+// `category` is the six-value vocabulary shared with generate-trip
+// (CATEGORY_TO_STYLE) and persisted onto each swipe, so the Preference Agent
+// can tell that a skipped place was a food venue rather than inferring it from
+// the name. It is set by hand rather than derived from `cat`, because `cat` is
+// a different, unordered vocabulary: `cat[0]` alone would file
+// "Miradouro de Santa Luzia" (a viewpoint) as neither nature nor culture, and
+// "LX Factory" as food when it is a design-and-brunch venue.
+//
+// The two are deliberately not kept in sync automatically -- they answer
+// different questions, `cat` is display copy and `category` is an enum.
 export const CARD_DATA = [
   {
     id: "timeout",
     name: "Time Out Market",
     area: "Cais do Sodré",
     cat: ["Food", "Indoor"],
+    category: "food",
     cost: "€€",
     img: "/images/timeout-market.jpg",
     blurb: "Mercado da Ribeira made new: 30+ stall kitchens under one roof — for a foodie it's a buffet of decisions.",
@@ -20,6 +31,7 @@ export const CARD_DATA = [
     name: "Miradouro de Santa Luzia",
     area: "Alfama",
     cat: ["View", "Sunset"],
+    category: "nature",
     cost: "Free",
     img: "/images/miradouro-santa-luzia.jpg",
     blurb: "A vine-shaded terrace with the classic postcard view over Alfama's rooftops down to the Tagus.",
@@ -36,6 +48,7 @@ export const CARD_DATA = [
     name: "Oceanário de Lisboa",
     area: "Parque das Nações",
     cat: ["Culture", "Indoor"],
+    category: "culture",
     cost: "€€",
     img: "/images/oceanario.jpg",
     blurb: "Europe's biggest aquarium — an indoor afternoon that still works when the sky opens.",
@@ -52,6 +65,7 @@ export const CARD_DATA = [
     name: "LX Factory",
     area: "Alcântara",
     cat: ["Food", "Design"],
+    category: "shopping",
     cost: "€€",
     img: "/images/lx-factory.jpg",
     blurb: "Booksellers, studios, murals and the city's favourite brunch under a railway bridge.",
@@ -68,6 +82,7 @@ export const CARD_DATA = [
     name: "Gulbenkian gardens",
     area: "Praça de Espanha",
     cat: ["Culture", "Green"],
+    category: "nature",
     cost: "Free",
     img: "/images/gulbenkian.jpg",
     blurb: "A hushed sculpture garden around Calouste Gulbenkian's museum — the anti-queue midday reset.",
@@ -84,6 +99,7 @@ export const CARD_DATA = [
     name: "Alfama hills",
     area: "Alfama",
     cat: ["Walk", "Culture"],
+    category: "culture",
     cost: "Free",
     img: "/images/alfama.jpg",
     blurb: "Tiled lanes, hidden miradouros and fado drifting out of doorways — the oldest, most scenic Lisbon.",
@@ -100,6 +116,7 @@ export const CARD_DATA = [
     name: "Pasteis de Belém",
     area: "Belém",
     cat: ["Food", "Icon"],
+    category: "food",
     cost: "€",
     img: "/images/pasteis-belem.jpg",
     blurb: "The original 1837 pastel de nata, straight from the oven. The daily line is the catch.",
@@ -116,6 +133,7 @@ export const CARD_DATA = [
     name: "Park — rooftop bar",
     area: "Bairro Alto",
     cat: ["Nightlife", "View"],
+    category: "nightlife",
     cost: "€€",
     img: "/images/park-rooftop-bar.jpg",
     blurb: "A hidden 5th-floor terrace inside an old car park, with a full sunset over the rooftops.",
@@ -132,6 +150,7 @@ export const CARD_DATA = [
     name: "Jardim da Estrela",
     area: "Estrela",
     cat: ["Green", "Chill"],
+    category: "nature",
     cost: "Free",
     img: "/images/jardim-estrela.jpg",
     blurb: "A leafy 1870s garden with bandstand, kiosk and far more benches than crowd.",

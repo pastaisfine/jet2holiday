@@ -5,7 +5,7 @@ import { useAuth } from "../context/useAuth";
 export default function RegisterScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const returnTo = location.state?.returnTo || "/hub";
+  const returnTo = location.state?.returnTo || "/setup/step1";
   const { signUp } = useAuth();
 
   const [username, setUsername] = useState("");
@@ -152,21 +152,15 @@ export default function RegisterScreen() {
           )}
         </div>
 
-        {!verifySentEmail && (
           <div className="auth-footer">
-            <p style={{ fontSize: 13, color: "var(--muted)", margin: "14px 0 8px" }}>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "14px 0 0" }}>
               Already have an account?{" "}
               <Link to="/login" className="auth-link">
                 Sign in
               </Link>
             </p>
-            <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0 }}>
-              <Link to="/hub" className="auth-link-subtle">
-                Continue exploring as guest →
-              </Link>
-            </p>
           </div>
-        )}
+
       </div>
     </section >
   );

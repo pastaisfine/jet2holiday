@@ -48,6 +48,16 @@
   --blush: oklch(88% 0.03 40);
   --peach: oklch(88% 0.04 70);
 
+  /* ── fixed-light surfaces ──
+     The travel-style card paints the same pale gradient artwork in both themes
+     (see .stylecard::before), so its interior is light regardless of the theme.
+     Any token it consumes therefore has to be one that does NOT flip, or a chip
+     inside the card picks up the dark theme's --surface and renders as a dark
+     block behind dark text. Declared here and deliberately not overridden in
+     the [data-theme="dark"] block. */
+  --on-light: oklch(99% 0.005 101.5);
+  --on-light-ink: oklch(19.54% 0.0182 137.9);
+
   /* ── gradients (natural ambient washes, no artificial neon) ── */
   --grad-hero: linear-gradient(135deg, oklch(96.5% 0.018 113.8) 0%, oklch(94% 0.022 113.8) 100%);
   --grad-soft: linear-gradient(140deg, var(--surface) 0%, oklch(97% 0.015 113.8) 100%);

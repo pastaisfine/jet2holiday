@@ -23,6 +23,7 @@ const MAX_CARDS = 19;
 interface LocationSuggestion {
   name: string;
   category: string;
+  estimatedDuration: number | null;
 }
 
 interface EnrichedPlace {
@@ -32,6 +33,7 @@ interface EnrichedPlace {
   placeId: string;
   thumbnail: string;
   rating: number | null;
+  reviewCount: number | null;
   address: string;
 }
 
@@ -68,23 +70,25 @@ const GEMINI_PER_MODEL_ATTEMPTS = 2;
 
 // Order is set by a live probe of this project's key, not by guesswork.
 //
-// Probed 2026-09-29 against this account:
-//   gemini-3.5-flash         200, ~2.5s  — works
+// Probed 2026-09-30 against this account (via the model-probe function):
 //   gemini-flash-lite-latest 200, ~0.9s  — works, fastest
-//   gemini-3.6-flash         503 overloaded
-//   gemini-flash-latest      hangs past 25s
-//   gemini-3.1-pro-preview   429, separate tier with no quota on this plan
+//   gemini-3.8-flash         200, ~9.5s  — works
+//   gemini-3.6-flash         200, ~10s   — works
+//   gemini-flash-latest      200, ~9.6s  — works
+//   gemini-3.5-flash         429 out of quota for this key
+//   gemini-3.1-pro-preview   429 out of quota for this key
 //
-// So the two verified models lead. The overloaded ones stay in the list as
-// backstops, since 503 is a capacity condition and resolves on its own.
-// Never list a 2.5 model first: those 404 for keys without a legacy usage
-// history, and any 404 before a working model wastes a whole run.
+// Quota is per-model here, not account-wide: the same probe that gets a 429
+// from gemini-3.5-flash gets a 200 from gemini-flash-lite-latest in under a
+// second. So a model that is out of quota is skipped, never treated as a dead
+// account. gemini-flash-lite-latest leads because it is both the fastest and
+// the one least likely to be throttled.
 const GEMINI_MODELS = [
-  "gemini-3.5-flash",
   "gemini-flash-lite-latest",
-  "gemini-3.6-flash",
   "gemini-3.8-flash",
+  "gemini-3.6-flash",
   "gemini-flash-latest",
+  "gemini-3.5-flash",
 ];
 
 /**
@@ -125,13 +129,17 @@ function json(body: unknown, status = 200): Response {
 }
 
 /**
- * Distinguishes an exhausted account quota from ordinary per-minute rate
+ * Distinguishes an exhausted per-model quota from ordinary per-minute rate
  * limiting.
  *
  * Both arrive as 429, but only one clears within a request. Google's
  * quota-exhausted message names billing explicitly, whereas a per-minute limit
- * says "rate limit" or "resets at". Treating them the same made a dead account
- * cost ~48s of retries across every model before reporting the same outcome.
+ * says "rate limit" or "resets at".
+ *
+ * This is deliberately scoped to ONE model rather than the whole account: a
+ * probe of this key shows gemini-3.5-flash returning a billing-quota 429 while
+ * gemini-flash-lite-latest answers in under a second. Treating that as a dead
+ * account aborted the entire run and threw away a working model list.
  */
 function isQuotaExhausted(status: number, body: string): boolean {
   if (status !== 429) return false;
@@ -186,19 +194,24 @@ function adminClient(supabaseUrl: string, serviceRoleKey: string) {
     async insertCard(deckId: string, position: number, loc: LocationSuggestion, place: EnrichedPlace) {
       const res = await fetch(`${supabaseUrl}/rest/v1/trip_cards`, {
         method: "POST",
-        headers,
+        // Without this PostgREST answers a bare 201 with an empty body, so
+        // `res.json()` below threw on every *successful* insert and the row
+        // came back null — the card was written but never counted.
+        headers: { ...headers, Prefer: "return=representation" },
         body: JSON.stringify({
           deck_id: deckId,
           position,
           name: place.title,
           category: loc.category,
           style_hint: CATEGORY_TO_STYLE[loc.category] || "balanced",
-          img_url: place.thumbnail,
-          lat: place.lat,
-          lng: place.lng,
+          thumbnail_url: place.thumbnail,
+          latitude: place.lat,
+          longitude: place.lng,
           place_id: place.placeId,
           rating: place.rating,
-          address: place.address,
+          review_count: place.reviewCount,
+          address_or_area: place.address,
+          estimated_duration_min: loc.estimatedDuration,
         }),
       });
       if (!res.ok) {
@@ -206,6 +219,16 @@ function adminClient(supabaseUrl: string, serviceRoleKey: string) {
         return null;
       }
       return (await res.json())?.[0] ?? null;
+    },
+    async clearDeckCards(deckId: string) {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/trip_cards?deck_id=eq.${encodeURIComponent(deckId)}`,
+        { method: "DELETE", headers }
+      );
+      if (!res.ok) {
+        console.warn(`[generate-trip] Card clear failed: ${res.status} ${await res.text().catch(() => "")}`);
+      }
+      return res.ok;
     },
     async linkTripToDeck(tripId: string, deckId: string) {
       const res = await fetch(
@@ -378,14 +401,20 @@ Deno.serve(async (req: Request) => {
 
   // Only the claim's own user may generate. A second request for the same deck
   // is answered from the table instead of duplicating the work.
-  const { data: deckRow } = await fetch(
+  //
+  // The response is read as a plain array. Destructuring `data` here reads a
+  // property off a Response object, which has none — so `existing` was always
+  // undefined, every repeat request fell through to the insert, hit a 409 on a
+  // deck that already existed, and returned "pending" without generating.
+  // Once a deck row existed it could never be regenerated, force or not.
+  const deckRows = await fetch(
     `${SUPABASE_URL}/rest/v1/curated_decks?id=eq.${encodeURIComponent(deckId)}&select=*`,
     { headers: admin.headers }
   )
     .then((r) => (r.ok ? r.json() : []))
     .catch(() => []);
 
-  const existing = deckRow?.[0];
+  const existing = Array.isArray(deckRows) ? deckRows[0] : undefined;
 
   if (existing?.status === "ready" && !body.force) {
     // Cache hit. Link the trip if it is not already on this deck, then let the
@@ -451,6 +480,18 @@ Deno.serve(async (req: Request) => {
   // not been created yet.
   if (body.tripId) await admin.linkTripToDeck(body.tripId, deckId);
 
+  // Cards from an earlier run stay in place until this run has produced
+  // replacements: trip_cards is UNIQUE (deck_id, position), so they have to go
+  // before the first insert, but clearing them up front meant a failure part
+  // way through left a shared deck with zero cards. The clear happens in
+  // clearStaleCards() immediately before the first insert.
+  let clearedStaleCards = false;
+  const clearStaleCards = async () => {
+    if (!existing || clearedStaleCards) return;
+    await admin.clearDeckCards(deckId);
+    clearedStaleCards = true;
+  };
+
   const fail = async (message: string) => {
     console.error(`[generate-trip] FAILED for "${destination}": ${message}`);
     await admin.updateDeck(deckId, { status: "failed", error_message: message.slice(0, 500) });
@@ -466,6 +507,9 @@ Deno.serve(async (req: Request) => {
       Array.isArray(preferences.dietary) && preferences.dietary.length
         ? `Dietary needs: ${preferences.dietary.join(", ")}`
         : "",
+      Array.isArray(preferences.requirements) && preferences.requirements.length
+        ? `Access and practical requirements: ${preferences.requirements.join(", ")}`
+        : "",
       preferences.note ? `Extra note: ${preferences.note}` : "",
     ].filter(Boolean).join("\n");
 
@@ -475,11 +519,12 @@ Deno.serve(async (req: Request) => {
         : null;
 
     const systemInstruction = `You are the jet2holiday Itinerary Agent. Your ONLY job: given a travel destination, return a JSON array of the best places to visit there.
-Output format: [{"name":"Place name","category":"one of: ${CATEGORIES.join(", ")}"}]
+Output format: [{"name":"Place name","category":"one of: ${CATEGORIES.join(", ")}","estimated_duration_min":90}]
 Rules:
 - Return between 6 and 19 locations. Pick the count based on how much the destination offers (a small town → ~6, a world city → ~15).
 - Each category MUST be exactly one of: ${CATEGORIES.join(", ")}.
 - Prefer area-level, well-known, real places (landmarks, neighborhoods, markets, viewpoints) over obscure or hyper-specific spots.
+- Set \`estimated_duration_min\` to your best estimate of how long a typical visitor spends at the place, as a plain integer number of minutes. Use your knowledge: a quick viewpoint or market stall is 20–30, a neighbourhood or park is 60–90, a major museum or theme park is 120–180. Never omit it or set it to null.
 - No prose, no markdown, no code fences — just the raw JSON array.`;
 
     const userPrompt = `Destination: ${destination}
@@ -525,16 +570,15 @@ Return the JSON array of locations now:`;
             modelErrors.push(msg);
             console.warn(`[generate-trip] ${msg}`);
 
-            // A billing/quota exhaustion is account-wide: no other model will
-            // succeed, and no backoff will clear it. Give up immediately rather
-            // than making the user watch a skeleton for a minute before we
-            // report the same thing.
+            // A quota wall is permanent for this model but says nothing about
+            // the others, so stop retrying it immediately — retrying cannot
+            // clear it and it would spend the run's time budget — then let the
+            // loop walk on to the next model. Only when every model has failed
+            // does this become a reportable account problem.
             if (isQuotaExhausted(geminiRes.status, errBody)) {
-              return await fail(
-                `Gemini quota exhausted for this project account. ` +
-                  `Check billing and quota at https://ai.google.dev/gemini-api/quotas. ` +
-                  `Last response: ${errBody.slice(0, 200)}`
-              );
+              lastStatus = `out of quota for this key (${geminiRes.status})`;
+              console.warn(`[generate-trip] Model ${model} is out of quota, moving to the next model`);
+              break;
             }
 
             // 404 means this key cannot use this model at all, which is a
@@ -583,6 +627,14 @@ Return the JSON array of locations now:`;
       // Report every model's outcome, not just the last few raw responses. The
       // summary is what tells us whether this is a bad model list (all 404) or
       // capacity (all 503) — opposite fixes.
+      const allOutOfQuota = perModel.length > 0 && perModel.every((line) => line.includes("out of quota"));
+      if (allOutOfQuota) {
+        return await fail(
+          `Every Gemini model is out of quota for this project key ` +
+            `(${perModel.join(" | ")}). Check billing and quota at ` +
+            `https://ai.google.dev/gemini-api/quotas.`
+        );
+      }
       return await fail(
         `Gemini unavailable across ${GEMINI_MODELS.length} models. ` +
           `Per-model: ${perModel.join(" | ")}. ` +
@@ -615,6 +667,12 @@ Return the JSON array of locations now:`;
       .map((l: any) => ({
         name: typeof l?.name === "string" ? l.name.trim() : "",
         category: CATEGORIES.includes(l?.category) ? l.category : "culture",
+        estimatedDuration:
+          typeof l?.estimated_duration_min === "number" &&
+          Number.isFinite(l.estimated_duration_min) &&
+          l.estimated_duration_min > 0
+            ? Math.round(l.estimated_duration_min)
+            : null,
       }))
       .filter((l: LocationSuggestion) => l.name.length > 0)
       .slice(0, MAX_CARDS);
@@ -706,6 +764,9 @@ Return the JSON array of locations now:`;
               placeId: item.place_id || "",
               thumbnail: thumbnail.trim(),
               rating: typeof item.rating === "number" ? item.rating : null,
+              // SerpApi exposes review counts as `reviews` (integer) on
+              // place_results and local_results entries.
+              reviewCount: typeof item.reviews === "number" ? item.reviews : null,
               address: item.address || "",
             };
           }
@@ -718,7 +779,13 @@ Return the JSON array of locations now:`;
     // Each card is committed the moment it resolves, so clients render
     // progress and a crash mid-run keeps what already landed.
     let inserted = 0;
+    let photoMisses = 0;
+    let insertFailures = 0;
     const photoUpgrades: Promise<void>[] = [];
+
+    // Everything that can fail before a single row is written has now
+    // succeeded, so it is safe to retire the previous run's cards.
+    await clearStaleCards();
 
     await runPool(locations, SERP_CONCURRENCY, async (loc, index) => {
       if (Date.now() >= deadline) {
@@ -728,12 +795,19 @@ Return the JSON array of locations now:`;
 
       const found = await enrichOne(loc);
       if (!found) {
+        photoMisses += 1;
         console.log(`[generate-trip] No photo-verified result for "${loc.name}" in "${destination}"`);
         return null;
       }
 
       const row = await admin.insertCard(deckId, index, loc, found);
-      if (!row) return found;
+      if (!row) {
+        // A verified photo we failed to persist is a database fault, not a
+        // missing photo. Counting it as the latter is what let a broken column
+        // name surface as "no places could be photo-verified".
+        insertFailures += 1;
+        return null;
+      }
 
       inserted += 1;
       console.log(`[generate-trip] Inserted [${inserted}/${locations.length}]: "${found.title}"`);
@@ -748,13 +822,32 @@ Return the JSON array of locations now:`;
     const startedAt = Date.now();
     console.log(
       `[generate-trip] Completed enrichment for "${destination}" in ${Date.now() - startedAt}ms: ` +
-        `${inserted}/${locations.length} spots with verified photos`
+        `${inserted}/${locations.length} spots with verified photos ` +
+        `(${photoMisses} without a photo, ${insertFailures} failed to save)`
     );
 
-    // A partial deck is still a usable deck, so only mark failed if we got
-    // nothing at all.
     if (inserted === 0) {
-      return await fail("No locations could be photo-verified for this destination");
+      // Name the actual fault. Both counters are reported because they have
+      // opposite fixes: photo misses mean the search provider came back thin,
+      // insert failures mean the database rejected the row.
+      if (insertFailures > 0) {
+        return await fail(
+          `Found ${locations.length} photo-verified places but could not save any of them ` +
+            `(${insertFailures} database insert${insertFailures === 1 ? "" : "s"} failed). ` +
+            `This is a storage fault, not a missing-photo problem — check the trip_cards schema ` +
+            `against the deployed function.`
+        );
+      }
+      return await fail(
+        `No location had a usable photo (${photoMisses}/${locations.length} searched).`
+      );
+    }
+
+    if (insertFailures > 0) {
+      console.warn(
+        `[generate-trip] Deck for "${destination}" is partial: ${insertFailures} photo-verified ` +
+          `places could not be saved and are missing from the deck.`
+      );
     }
 
     await admin.updateDeck(deckId, { status: "ready", card_count: inserted });

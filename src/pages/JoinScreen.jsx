@@ -76,7 +76,25 @@ export default function JoinScreen({ useAppState }) {
           .limit(1);
 
         if (existingSwipes && existingSwipes.length > 0) {
+          // Already swiped — go straight to hub
           navigate("/hub");
+          return;
+        }
+
+        // Check if this user has completed their personal preferences yet.
+        // New joiners haven't gone through setup/step3, so send them there
+        // first so they can set preferences before swiping.
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("preferences_completed")
+          .eq("id", session.user.id)
+          .maybeSingle();
+
+        const prefsCompleted = profileRow?.preferences_completed === true;
+
+        if (!prefsCompleted) {
+          // Pass the tripId via state so Step 3 can attach to this joined trip
+          navigate("/setup/step3", { state: { joinTripId: tripId } });
         } else {
           navigate("/swipe");
         }

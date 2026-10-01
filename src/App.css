@@ -2415,13 +2415,6 @@
   line-height: 1.5;
 }
 
-.trait {
-  margin-top: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
-}
-
 .trait .row {
   display: flex;
   justify-content: space-between;
@@ -2461,6 +2454,345 @@
   gap: 7px;
   flex-wrap: wrap;
   margin-top: 16px;
+}
+
+/* ─── Preference profile screen ─── */
+.style-wrap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 16px 40px;
+}
+
+/* The evidence line sits directly under the style name it qualifies, in the
+   mono face used for the card's eyebrow, so it reads as a caption on the claim
+   rather than as another claim. */
+.stylecard .evidence {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* "Top matches" and its "Share of your likes" qualifier. The qualifier is the
+   part that makes the number mean something: a bare percentage next to a
+   category name is read as an absolute score for the traveller. */
+.traithead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: var(--fg);
+}
+
+.traithead .traithead-note {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--muted);
+  text-transform: none;
+}
+
+.trait {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+/* A section heading. One size and weight for every card on the screen, so the
+   eye can scan for the next thing without re-reading a new visual language. */
+.section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.02em;
+}
+
+.section-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 5px 0 0;
+}
+
+.subhead {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  margin: 14px 0 2px;
+}
+
+.subhead:first-child {
+  margin-top: 12px;
+}
+
+/* Verbatim reason chips. The quote marks are in the markup rather than a
+   ::before so the text still reads as a quotation when copied out. */
+.reasonchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.reasonchips .chip {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.reasonchips .chip--liked {
+  background: var(--gerund-soft);
+  border-color: transparent;
+}
+
+.reasonchips .chip--skipped {
+  background: var(--warn-soft);
+  border-color: transparent;
+}
+
+/* Preferences as a definition list rather than a grid of boxed tiles. Five
+   fields that each hold one phrase do not need five borders between them --
+   the grid read as five separate settings rather than one profile. */
+.prefgrid {
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.prefrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.prefrow:last-child {
+  border-bottom: 0;
+}
+
+.prefrow dt {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  flex: none;
+}
+
+.prefrow dd {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--fg);
+  text-align: right;
+}
+
+.prefnote {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+
+.prefnote strong {
+  color: var(--fg);
+}
+
+.edit-prefs {
+  margin-top: 14px;
+  padding: 8px 16px;
+  font-size: 13px;
+  align-self: flex-start;
+}
+
+/* "Why we learned this". Native <details> so it is keyboard reachable and works
+   without JS; the marker is replaced because the default triangle is the only
+   affordance telling the user there is more inside. */
+.evidence-card > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.evidence-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.evidence-card > summary::after {
+  content: '+';
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.evidence-card[open] > summary::after {
+  content: '\2212';
+}
+
+.insightlist {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.insightlist li {
+  position: relative;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--fg);
+  padding-left: 15px;
+}
+
+.insightlist li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.insightlist--muted li {
+  color: var(--muted);
+}
+
+.insightlist--muted li::before {
+  background: var(--border);
+}
+
+.bento-card .chipsline {
+  margin-top: 12px;
+}
+
+.idealday {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: stop;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.idealday li {
+  counter-increment: stop;
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px 10px 34px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+
+.idealday li::before {
+  content: counter(stop);
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.idealday-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.idealday-tag {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.crewlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.crewrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
+}
+
+.crewname {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.crewtag {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* Agreement and trade-off. Only rendered when there is a real conflict to
+   report -- see toGroupInsight -- so it never contradicts the bars above it. */
+.groupinsight {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.groupinsight p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.groupinsight strong {
+  color: var(--fg);
+  font-weight: 650;
 }
 
 .others {
@@ -3600,12 +3932,15 @@ button.btn-primary,
   color: #2E2723 !important;
 }
 
-/* Maintain tag button contrast inside the card */
+/* Chips inside the travel-style card resolve against the card's own fixed-light
+   interior rather than the theme, so they stay legible in dark mode. Without
+   this the plain chip picks up dark-theme --surface and renders dark-on-dark.
+   The specificity of the !important is inherited from the previous band-aid for
+   .chip.tag-ok; both are replaced together. */
 .stylecard .chip,
-.style-hero .chip,
-[data-theme="dark"] .stylecard .chip,
-[data-theme="dark"] .style-hero .chip {
-  color: initial !important;
+.style-hero .chip {
+  background: var(--on-light);
+  color: var(--on-light-ink) !important;
 }
 
 /* ─── editable itinerary ── */

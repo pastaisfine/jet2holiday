@@ -59,7 +59,7 @@ export default function ProfileScreen({ useAppState }) {
     resetPipeline();
     resetTrip?.();
     setStartOverOpen(false);
-    navigate("/setup");
+    navigate("/setup/step1");
   };
 
   const handleResetEverything = async () => {
@@ -74,7 +74,7 @@ export default function ProfileScreen({ useAppState }) {
       resetTrip?.();
       setStartOverBusy(false);
       setStartOverOpen(false);
-      navigate("/setup");
+      navigate("/setup/step1");
     }
   };
 
