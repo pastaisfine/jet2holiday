@@ -7,17 +7,29 @@ import ProgressBar from "../components/ProgressBar";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { fmtDateRange, dayCount } from "../utils/date";
 import { getTripMembers, getTripSwipes, subscribeTripMembers, subscribeTripSwipes } from "../services/tripService";
-import { ArrowSquareOut } from "@phosphor-icons/react";
+import { getTripPreferenceSummaries } from "../services/preference";
+import { useGroupPlan, loadGroupPlan, startGroupPlan } from "../services/groupPlan";
+import { ArrowSquareOut, Sparkle, WarningCircle } from "@phosphor-icons/react";
 
+const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function hubDayLabel(dateValue) {
+  if (!dateValue) return "Day";
+  const date = new Date(`${String(dateValue).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "Day";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${month}.${day} ${DAYS_SHORT[date.getDay()]}`;
+}
 
 export default function HubScreen({ useAppState }) {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const {
-    likes, skips, reasonCount, styleSeen, styleName, dest, startDate, endDate, activeStops,
-    hotel, flight, confirmedItineraryId, tripId
+    likes, skips, reasonCount, styleSeen, styleName, dest, startDate, endDate,
+    hotel, flight, tripId
   } = useAppState;
+  const { plan, phase: planPhase, error: planError } = useGroupPlan();
 
   const hotelPicked = typeof hotel === "object" && hotel ? hotel : HOTELS.find((h) => h.id === hotel);
   const flightPicked = typeof flight === "object" && flight ? flight : FLIGHTS.find((f) => f.id === flight);
@@ -69,17 +81,22 @@ export default function HubScreen({ useAppState }) {
   };
 
 
-  const mineDone = likes + skips > 0;
   const dateRange = fmtDateRange(startDate, endDate);
   const days = startDate && endDate ? dayCount(startDate, endDate) : 3;
+
+  const validated = plan?.validated_plan || null;
+  const planDays = useMemo(() => validated?.days || [], [validated]);
+  const confirmedAt = validated?.confirmed_at || null;
+
   const spiralItems = useMemo(
-    () => activeStops.map((stop) => ({ id: stop.id, src: stop.img, alt: stop.name })),
-    [activeStops],
+    () => planDays.flatMap((day) => day.stops.map((stop) => ({ id: `${day.day_index}-${stop.id}`, src: stop.img, alt: stop.name }))),
+    [planDays],
   );
 
   // Real members from DB
   const [members, setMembers] = useState([]);
   const [swipes, setSwipes] = useState([]);
+  const [summaries, setSummaries] = useState([]);
 
   const loadMembers = useCallback(async () => {
     if (!tripId) return;
@@ -89,14 +106,22 @@ export default function HubScreen({ useAppState }) {
 
   const loadSwipes = useCallback(async () => {
     if (!tripId) return;
-    const s = await getTripSwipes(tripId);
+    // A summary lands when a member finishes the preference analysis, which
+    // usually follows their last swipe -- so the gate refreshes with the
+    // swipes rather than on a separate effect nobody can see.
+    const [s, profs] = await Promise.all([
+      getTripSwipes(tripId),
+      getTripPreferenceSummaries(tripId),
+    ]);
     setSwipes(s);
+    setSummaries(profs);
   }, [tripId]);
 
   useEffect(() => {
+    loadGroupPlan(tripId);
     loadMembers();
     loadSwipes();
-  }, [loadMembers, loadSwipes]);
+  }, [tripId, loadMembers, loadSwipes]);
 
   // Realtime subscriptions
   useEffect(() => {
@@ -113,6 +138,18 @@ export default function HubScreen({ useAppState }) {
     return ids;
   }, [swipes]);
 
+  // The database is the authority on whether this member has swiped. Local
+  // counters can be zero on a new device while the account has a full deck of
+  // verdicts, and saying "Your turn to swipe" to someone who finished is the
+  // same bug the swipe screen had.
+  const mySwipeRows = useMemo(
+    () => swipes.filter((s) => s.user_id === profile?.id),
+    [swipes, profile?.id],
+  );
+  const displayLikes = likes + skips > 0 ? likes : mySwipeRows.filter((s) => s.direction === "like").length;
+  const displaySkips = likes + skips > 0 ? skips : mySwipeRows.filter((s) => s.direction === "skip").length;
+  const mineDone = displayLikes + displaySkips > 0;
+
   const totalMembers = members.length;
   const doneCount = members.filter((m) => swipedUserIds.has(m.userId)).length;
   // Make sure current user's local swipes count too
@@ -120,6 +157,36 @@ export default function HubScreen({ useAppState }) {
     ? doneCount + 1
     : doneCount;
   const effectiveTotalMembers = totalMembers || 1;
+
+  // The group planner needs a summary from every member, not just a swipe
+  // count: a member who swiped but has no analysis has no profile to balance.
+  const summaryUserIds = useMemo(() => new Set(summaries.map((s) => s.user_id)), [summaries]);
+  const profilesReady = members.filter((m) => summaryUserIds.has(m.userId)).length;
+  const allProfilesReady = members.length > 0 && profilesReady >= members.length;
+  const planInFlight = planPhase === "planning" || planPhase === "loading" || planPhase === "scheduling";
+  const isLeader = useMemo(
+    () => members.some((m) => m.userId === profile?.id && m.role === "leader"),
+    [members, profile?.id],
+  );
+  const leaderName = useMemo(
+    () => members.find((m) => m.role === "leader")?.username || "the trip creator",
+    [members],
+  );
+  const includedMembers = useMemo(
+    () => new Set(plan?.included_members || []),
+    [plan?.included_members],
+  );
+  const planBuilt = plan?.status === "ready" || plan?.status === "confirmed";
+  // Force-continue: the leader can build with whoever has finished. The button
+  // needs at least one completed analysis to build from, not all of them.
+  const canBuild = isLeader && profilesReady >= 1;
+
+  // Deliberately not awaited: generation takes tens of seconds, and the plan
+  // screen has its own progress states, so the user should land there at once.
+  const buildPlan = () => {
+    startGroupPlan({ tripId });
+    navigate("/plan");
+  };
 
   // Common card style based on brand-spec
   const cardStyle = {
@@ -217,41 +284,90 @@ export default function HubScreen({ useAppState }) {
 
       <div className="hub-body">
 
-        {/* 5. Shared Plan Ready / Confirmed Itinerary Section */}
-        {styleSeen && !confirmedItineraryId && (
-          <section style={{ ...cardStyle, background: "var(--bg)", border: "2px dashed var(--border)" }}>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Shared plan's ready</h3>
-            <div style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.4 }}>
-              See how we balanced everyone's tastes into one day you'll all say yes to.
-            </div>
-            <button style={{ ...primaryBtnStyle, marginTop: 8 }} onClick={() => navigate("/plan")}>
-              View Shared Plan
-            </button>
-          </section>
-        )}
-
-        {confirmedItineraryId && (
+        {/* Shared plan: gate, progress, confirmed itinerary */}
+        {confirmedAt && validated ? (
           <section style={cardStyle}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Confirmed Itinerary</h3>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Confirmed itinerary</h3>
               <button style={secondaryBtnStyle} onClick={() => navigate("/plan")}>View map</button>
             </div>
 
-            <div style={{ marginTop: 8, display: "flex", flexDirection: "column" }}>
-              {activeStops.map((stop, i) => (
-                <div key={stop.id} style={{ display: "flex", gap: 16 }}>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 44 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)", padding: "4px 8px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>{stop.t}</span>
-                    {i < activeStops.length - 1 && (
-                      <div style={{ width: 2, flex: 1, minHeight: 24, background: "var(--border)", margin: "8px 0", borderRadius: 2 }}></div>
-                    )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {planDays.map((planDay) => (
+                <div key={planDay.day_index}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{hubDayLabel(planDay.date)}</span>
+                    <span style={{ fontSize: 13, color: "var(--muted)" }}>{planDay.title}</span>
+                    {planDay.overflow && <WarningCircle size={14} color="var(--warn)" />}
                   </div>
-                  <div style={{ flex: 1, fontSize: 15, paddingBottom: i < activeStops.length - 1 ? 24 : 0, paddingTop: 4, color: "var(--fg)", fontWeight: 500 }}>
-                    {stop.name}
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    {planDay.stops.map((stop, i) => (
+                      <div key={stop.id} style={{ display: "flex", gap: 16 }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 58 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)", padding: "4px 8px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>{stop.t}</span>
+                          {i < planDay.stops.length - 1 && (
+                            <div style={{ width: 2, flex: 1, minHeight: 24, background: "var(--border)", margin: "8px 0", borderRadius: 2 }}></div>
+                          )}
+                        </div>
+                        <div style={{ flex: 1, fontSize: 15, paddingBottom: i < planDay.stops.length - 1 ? 24 : 0, paddingTop: 4, color: "var(--fg)", fontWeight: 500 }}>
+                          {stop.name}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
+          </section>
+        ) : planInFlight ? (
+          <section style={{ ...cardStyle, background: "var(--bg)", border: "2px dashed var(--border)" }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>
+              {planPhase === "scheduling" ? "Plotting the route…" : "Building your shared plan…"}
+            </h3>
+            <div style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.4 }}>
+              {planPhase === "scheduling"
+                ? "Mapbox is ordering each day and the scheduler is setting the times."
+                : "The Group Planner is comparing everyone's summaries and finding the compromises."}
+            </div>
+            <button style={primaryBtnStyle} onClick={() => navigate("/plan")}>View progress</button>
+          </section>
+        ) : validated ? (
+          <section style={{ ...cardStyle, background: "var(--bg)", border: "2px dashed var(--border)" }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Your shared plan is ready</h3>
+            <div style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.4 }}>
+              {planDays.length} day{planDays.length === 1 ? "" : "s"} balanced from everyone's swipes, routed and timed.
+            </div>
+            <button style={{ ...primaryBtnStyle, marginTop: 8 }} onClick={() => navigate("/plan")}>
+              View shared plan
+            </button>
+          </section>
+        ) : (
+          <section style={{ ...cardStyle, background: "var(--bg)", border: "2px dashed var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Sparkle size={18} weight="fill" color="var(--accent-deep)" />
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>The group plan</h3>
+            </div>
+            <div style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.4 }}>
+              {allProfilesReady
+                ? "Everyone's travel style is ready. Build the shared itinerary the whole group can review."
+                : profilesReady > 0
+                  ? `${profilesReady} of ${effectiveTotalMembers} travel styles ready. You can build now with whoever has finished — the rest can still view and vote on the plan.`
+                  : "No travel styles are ready yet. A member's style unlocks once they finish swiping and review it."}
+            </div>
+            {planError && <div className="plan-error" role="alert">{planError}</div>}
+            {isLeader ? (
+              <button style={primaryBtnStyle} disabled={!canBuild} onClick={buildPlan}>
+                {profilesReady === 0
+                  ? "Waiting for the first traveller"
+                  : allProfilesReady
+                    ? "Build the group plan"
+                    : `Build with ${profilesReady} of ${effectiveTotalMembers} ready`}
+              </button>
+            ) : (
+              <button style={primaryBtnStyle} disabled>
+                Waiting for {leaderName}
+              </button>
+            )}
           </section>
         )}
 
@@ -261,7 +377,7 @@ export default function HubScreen({ useAppState }) {
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>{mineDone ? "Your preferences saved" : "Your turn to swipe"}</h3>
             <div style={{ marginTop: 6, fontSize: 14, color: mineDone ? "var(--muted)" : "var(--surface)", lineHeight: 1.4 }}>
               {mineDone
-                ? `${likes} liked, ${skips} skipped, ${reasonCount} reasons logged. We're tuning the itinerary to your taste.`
+                ? `${displayLikes} liked, ${displaySkips} skipped, ${reasonCount} reasons logged. We're tuning the itinerary to your taste.`
                 : "9 places, ~2 minutes. Swipe right for want, left for skip. Add a reason and the AI learns."}
             </div>
           </div>
@@ -420,7 +536,7 @@ export default function HubScreen({ useAppState }) {
             <div>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Group alignment</h3>
               <div style={{ fontSize: 14, color: "var(--muted)", marginTop: 4 }}>
-                {effectiveDoneCount} of {effectiveTotalMembers} swiped. Reveal unlocks when ready.
+                {effectiveDoneCount} of {effectiveTotalMembers} swiped · {profilesReady} of {effectiveTotalMembers} profiles ready.
               </div>
             </div>
 
@@ -429,6 +545,8 @@ export default function HubScreen({ useAppState }) {
                 const isUser = m.userId === profile?.id;
                 const memberName = isUser ? (profile?.username || m.username) : m.username;
                 const finished = swipedUserIds.has(m.userId) || (isUser && mineDone);
+                const profiled = summaryUserIds.has(m.userId);
+                const excluded = planBuilt && includedMembers.size > 0 && !includedMembers.has(m.userId);
                 return (
                   <div key={m.userId} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
                     <div style={{
@@ -436,18 +554,19 @@ export default function HubScreen({ useAppState }) {
                       border: finished ? "none" : "2px dashed var(--border)",
                       color: finished ? "var(--surface)" : "var(--muted)",
                       width: 52, height: 52, borderRadius: 999, fontSize: 20,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600
+                      display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600,
+                      opacity: excluded ? 0.55 : 1
                     }}>
                       {memberName.slice(0, 1).toUpperCase()}
                     </div>
                     <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", marginTop: 8 }}>{memberName}{isUser ? " (you)" : ""}</span>
                     <span style={{
                       fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",
-                      marginTop: 4, color: finished ? "var(--fg)" : "var(--muted)",
-                      background: finished ? "var(--accent)" : "transparent",
+                      marginTop: 4, color: excluded ? "var(--surface)" : profiled ? "var(--fg)" : "var(--muted)",
+                      background: excluded ? "var(--muted)" : profiled ? "var(--accent)" : "transparent",
                       padding: "2px 6px", borderRadius: 4
                     }}>
-                      {finished ? "Ready" : "Waiting"}
+                      {excluded ? "Not in plan" : profiled ? "Profiled" : finished ? "Swiped" : "Waiting"}
                     </span>
                   </div>
                 );

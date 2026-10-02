@@ -52,7 +52,7 @@ graph TD
             Done["DoneScreen\n(Swipe summary)"]
             Style["StyleScreen\n(Travel style quiz)"]
             Hub["HubScreen\n(Trip dashboard)"]
-            Plan["PlanScreen\n(Itinerary editor)"]
+            Plan["PlanScreen\n(Shared group plan:\nrouted days + times)"]
             Group["GroupScreen\n(Group members)"]
             Tasks["TasksScreen\n(Task board)"]
             Travel["TravelScreen\n(In-trip view +\nMapbox map)"]
@@ -76,21 +76,22 @@ graph TD
 
         subgraph Services["Services (src/services/)"]
             PlacesSvc["placesAutocomplete.js\n(Proxy call)"]
-            MapboxSvc["mapbox.js\n(Directions API)"]
+            MapboxSvc["mapbox.js\n(Directions +\nOptimization API)"]
             TaskAgentSvc["taskAgent.js\n(AI task parser)"]
             TravelSearchSvc["travelSearch.js\n(Flights / stays /\nrentals search)"]
             TripSvc["tripService.js\n(Trip persistence)"]
-            TripGenSvc["generateTrip.js\n(Itinerary generation)"]
+            TripGenSvc["generateTrip.js\n(Deck generation)"]
             PrefSvc["preference.js\n(Preference agent)"]
+            GroupPlanSvc["groupPlan.js\n(Group plan pipeline:\nplanner → itinerary →\nrouting → schedule)"]
         end
 
         subgraph Lib["Lib (src/lib/)"]
             SupabaseClient["supabase.js\n(Supabase client)"]
+            Scheduler["scheduler.js\n(Deterministic clock\nfrom Mapbox legs)"]
         end
 
         subgraph Data["Static Data (src/data/)"]
             CardsData["cards.js\n(Place swipe cards)"]
-            PlansData["plans.js\n(3 preset itineraries:\nbalanced, foodfirst, slower)"]
             StylesData["styles.js\n(Travel style profiles)"]
             MembersData["members.js\n(Mock group members)"]
             TasksData["tasks.js\n(Mock task board)"]
@@ -104,10 +105,15 @@ graph TD
 
     subgraph Supabase["Supabase Platform"]
         SupabaseAuth["Supabase Auth\n(Email/password)"]
-        
+
+        subgraph Database["PostgreSQL"]
+            TripPlansDB["trip_plans\n(shared group plan:\ngroup_profile,\ncandidate_pois,\nvalidated_plan)"]
+        end
+
         subgraph EdgeFunctions["Edge Functions (Deno)"]
             PlacesFn["places-autocomplete\n(SerpApi proxy +\nGoogle Static Maps)"]
             TaskFn["task-agent\n(Gemini AI:\nNL → task list)"]
+            GroupPlannerFn["group-planner\n(Gemini: group profile\n→ candidate itinerary)"]
         end
     end
 
@@ -137,7 +143,6 @@ graph TD
 
     %% Pages use static data
     Swipe --> CardsData
-    Plan --> PlansData
     Style --> StylesData
     Setup --> MembersData
     Hub --> MembersData
@@ -154,7 +159,8 @@ graph TD
     Swipe --> PrefSvc
     Swipe --> TripGenSvc
     Plan --> PlacesSvc
-    Plan --> MapboxSvc
+    Plan --> GroupPlanSvc
+    Hub --> GroupPlanSvc
     Tasks --> TaskAgentSvc
     TravelSearch --> TravelSearchSvc
     Profile --> TripGenSvc
@@ -164,11 +170,17 @@ graph TD
     PlacesSvc -- "POST /places-autocomplete" --> PlacesFn
     TaskAgentSvc -- "POST /task-agent" --> TaskFn
     MapboxSvc --> MapboxAPI
+    GroupPlanSvc -- "POST /group-planner" --> GroupPlannerFn
+    GroupPlanSvc --> MapboxSvc
+    GroupPlanSvc --> Scheduler
+    GroupPlanSvc -- "read + write validated_plan\n(Realtime)" --> TripPlansDB
+    GroupPlannerFn -- "service role:\nread summaries/swipes/deck,\nwrite plan" --> TripPlansDB
 
     %% Edge function → external
     PlacesFn --> SerpApi
     PlacesFn --> GoogleStaticMaps
     TaskFn --> GeminiAPI
+    GroupPlannerFn --> GeminiAPI
 ```
 
 ---
@@ -212,7 +224,7 @@ WhereDo/
 │   │   ├── DoneScreen.jsx        # Post-swipe summary
 │   │   ├── StyleScreen.jsx       # Travel style quiz
 │   │   ├── HubScreen.jsx         # Trip dashboard / entry hub
-│   │   ├── PlanScreen.jsx        # Itinerary editor (drag-drop, map)
+│   │   ├── PlanScreen.jsx        # Shared group plan (routed days, times, map)
 │   │   ├── GroupScreen.jsx       # Group member management
 │   │   ├── TasksScreen.jsx       # AI-powered task board
 │   │   ├── TravelScreen.jsx      # In-trip logistics + Mapbox map
@@ -244,19 +256,21 @@ WhereDo/
 │   │
 │   ├── services/
 │   │   ├── placesAutocomplete.js # Calls places-autocomplete edge function
-│   │   ├── mapbox.js             # Calls Mapbox Directions API
+│   │   ├── mapbox.js             # Directions + Optimization API
 │   │   ├── taskAgent.js          # Calls task-agent edge function (Gemini AI)
 │   │   ├── travelSearch.js       # Flights / stays / rentals search
-│   │   ├── tripService.js        # Trip persistence
-│   │   ├── generateTrip.js       # Itinerary generation
+│   │   ├── tripService.js        # Trip + deck persistence
+│   │   ├── generateTrip.js       # Deck generation pipeline
+│   │   ├── groupPlan.js          # Group plan pipeline (planner → route → schedule)
 │   │   └── preference.js         # Preference agent
 │   │
 │   ├── lib/
-│   │   └── supabase.js           # Supabase client initialization
+│   │   ├── supabase.js           # Supabase client initialization
+│   │   ├── scheduler.js          # Deterministic clock times from Mapbox legs
+│   │   └── swipeDeck.js          # Deck progress from durable swipe rows
 │   │
 │   ├── data/                     # Static mock/seed data
 │   │   ├── cards.js              # Swipe card content for Lisbon
-│   │   ├── plans.js              # 3 preset itineraries + route legs
 │   │   ├── styles.js             # Travel style personas
 │   │   ├── members.js            # Mock group member profiles
 │   │   ├── tasks.js              # Mock task board
@@ -275,7 +289,13 @@ WhereDo/
 │   └── functions/
 │       ├── places-autocomplete/  # Deno edge fn: SerpApi proxy
 │       │   └── index.ts
-│       └── task-agent/           # Deno edge fn: Gemini AI task parser
+│       ├── task-agent/           # Deno edge fn: Gemini AI task parser
+│       │   └── index.ts
+│       ├── preference/           # Deno edge fn: per-member preference summary
+│       │   └── index.ts
+│       ├── generate-trip/        # Deno edge fn: deck discovery + enrichment
+│       │   └── index.ts
+│       └── group-planner/        # Deno edge fn: group profile → candidate itinerary
 │           └── index.ts
 │
 ├── public/                       # Static assets (images)
@@ -290,9 +310,13 @@ WhereDo/
 
 | Decision | Rationale |
 |---|---|
-| **localStorage for app state** | `useAppState.js` persists the entire trip state (swipes, itinerary, tasks) to `localStorage` under `tripder-state-v1`. Simple, no backend DB needed for the core MVP flow. |
+| **localStorage for app state** | `useAppState.js` persists UI-facing trip state (counters, task board, deck identity) to `localStorage` under `tripder-state-v1`. Verdicts live in `public.swipes`, and deck progress is rebuilt from them, so local storage is a cache rather than the source of truth. |
+| **DB-derived swipe progress** | The Swipe screen lists only cards with no verdict for this member (`getUserSwipes` + `lib/swipeDeck.js`), so refresh, invite links and new devices resume mid-deck or stay finished. `addedCards` is scoped to `cardsDeckId` so one trip's deck cannot leak into another, and invite links no longer reset progress. |
+| **One verdict per member per place** | Partial unique indexes on `swipes` enforce one row per (member, trip/destination, place); the client looks the row up and updates it, latest verdict wins, so re-swiping can never duplicate or inflate group tallies. |
 | **Supabase Auth only** | Supabase is used purely for authentication (email/password). No database tables — user data lives in Supabase Auth user metadata. |
 | **Edge Functions as API proxies** | API secrets (SerpApi, Google Maps, Gemini) never reach the browser. All sensitive calls route through Supabase Deno edge functions. |
 | **AI task extraction via Gemini** | The `task-agent` edge function sends natural-language trip messages to Gemini 2.0 Flash and gets back a structured JSON task list — enabling conversational task creation on the Tasks screen. |
-| **Static itinerary data** | The three preset itineraries (`balanced`, `foodfirst`, `slower`) and swipe cards are hardcoded for the Lisbon MVP. User can layer drafts and custom "suggested" itineraries on top via `itineraryDrafts` / `userSuggestedItineraries` in state. |
+| **Group plan lives in Supabase** | `trip_plans` holds one shared plan per trip. The `group-planner` edge function writes `group_profile` and `candidate_pois` under the service role; members read the row and may write only `validated_plan`, enforced by RLS plus a column-level grant. Realtime keeps every member on the same plan. |
+| **LLM decides what, Mapbox decides when** | The Group Planner Agent produces priorities, conflicts and constraints from the preference summaries plus relevant swipe evidence (never the whole history). The Itinerary Agent assigns stops to days and is forbidden from emitting times. `scheduler.js` derives clock times deterministically from Mapbox travel legs and the recorded place durations; when Mapbox is unavailable it falls back to distance estimates rather than inventing numbers. |
+| **No preset itineraries** | The old hardcoded `balanced` / `foodfirst` / `slower` plans and their route legs are gone. PlanScreen renders only the routed, timed group plan, with an Ideas backlog of unassigned candidates that can be added and re-routed. |
 | **No global state library** | All state is managed via a single custom hook (`useAppState`) passed as a prop — no Redux, Zustand, or similar, keeping the MVP lean. |

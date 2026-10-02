@@ -227,6 +227,47 @@ export async function joinTrip({ tripId, userId }) {
 }
 
 /**
+ * The signed-in member's own swipe rows for this trip (or destination).
+ *
+ * This is what makes deck progress durable: the Swipe screen derives which
+ * cards are already judged from these rows instead of trusting a positional
+ * `idx` that only lives in localStorage. Scoped to the trip when one is known,
+ * falling back to the destination for pre-trip swipes, to match how swipes are
+ * written and how the Preference Agent reads them.
+ */
+export async function getUserSwipes({ tripId, destination }) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    throw sessionError;
+  }
+
+  const userId = sessionData?.session?.user?.id;
+
+  if (!userId) {
+    return [];
+  }
+
+  let query = supabase
+    .from("swipes")
+    .select("card_id, card_name, direction, reasons, swiped_at")
+    .eq("user_id", userId);
+
+  query = tripId
+    ? query.eq("trip_id", tripId)
+    : query.eq("destination", destination);
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.warn("Error fetching user swipes:", error.message);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
  * Fetches all swipes for a given trip, joining profile details for each user.
  */
 export async function getTripSwipes(tripId) {

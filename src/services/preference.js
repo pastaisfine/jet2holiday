@@ -170,6 +170,30 @@ export async function getPreferenceSummary({ tripId, destination }) {
   return data || null;
 }
 
+/**
+ * Every member's stored analysis for this trip.
+ *
+ * The group planner gate needs to know whether all travellers have finished
+ * swiping before a shared plan can be built; it does not need the full text of
+ * each summary, so only the fields the gate and the group screen display are
+ * read. Trip-member RLS on preference_summaries makes this readable.
+ */
+export async function getTripPreferenceSummaries(tripId) {
+  if (!tripId) return [];
+
+  const { data, error } = await supabase
+    .from("preference_summaries")
+    .select("user_id, style_name, tagline, pace, priorities")
+    .eq("trip_id", tripId);
+
+  if (error) {
+    console.warn("Error fetching trip preference summaries:", error.message);
+    return [];
+  }
+
+  return data || [];
+}
+
 // Persist the agent's output so it outlives the tab that produced it. Re-running
 // the analysis overwrites in place: there is one current summary per traveller
 // per trip, and that is the only one the group planner should ever read.

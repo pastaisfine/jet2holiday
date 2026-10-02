@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { getTrip, joinTrip, getTripDeckId, getDeckCards } from "../services/tripService";
@@ -9,7 +9,22 @@ export default function JoinScreen({ useAppState }) {
   const { tripId } = useParams();
   const navigate = useNavigate();
   const { session, loading: authLoading } = useAuth();
-  const { loadTrip, update } = useAppState;
+  const { loadTrip, update, addedCards, pipelineCompleted, cardsDeckId } = useAppState;
+
+  // Read through refs inside the join effect: subscribing to these values would
+  // re-run the effect on every state write, and each run writes state.
+  const addedCardsRef = useRef(addedCards);
+  useEffect(() => {
+    addedCardsRef.current = addedCards;
+  }, [addedCards]);
+  const pipelineCompletedRef = useRef(pipelineCompleted);
+  useEffect(() => {
+    pipelineCompletedRef.current = pipelineCompleted;
+  }, [pipelineCompleted]);
+  const cardsDeckIdRef = useRef(cardsDeckId);
+  useEffect(() => {
+    cardsDeckIdRef.current = cardsDeckId;
+  }, [cardsDeckId]);
 
   const [trip, setTrip] = useState(null);
   const [hostName, setHostName] = useState("");
@@ -55,19 +70,10 @@ export default function JoinScreen({ useAppState }) {
         const deckId = await getTripDeckId(tripId);
         const sharedCards = deckId ? await getDeckCards(deckId) : [];
 
-        // Reset swipe progress so the new member starts fresh with the workspace's shared card deck
-        update({
-          idx: 0,
-          likes: 0,
-          skips: 0,
-          tagged: {},
-          addedCards: sharedCards,
-          pipelineCompleted: sharedCards.length > 0,
-          pipelineDest: effectiveTrip?.destination || "Lisbon, Portugal",
-          pipelineThinFallback: false,
-        });
-
-        // Check if user already swiped in this trip
+        // Check whether this member has already judged places on this trip
+        // before touching progress. An invite link is re-openable and gets
+        // refreshed; wiping swipe state here was sending finished members back
+        // to a full deck.
         const { data: existingSwipes } = await supabase
           .from("swipes")
           .select("id")
@@ -76,10 +82,41 @@ export default function JoinScreen({ useAppState }) {
           .limit(1);
 
         if (existingSwipes && existingSwipes.length > 0) {
-          // Already swiped — go straight to hub
+          // Already swiped. Same deck: merge, so user-added places on this
+          // device survive. Different deck (another trip, or none recorded):
+          // replace, so a previous trip's cards cannot linger in this one.
+          const sameDeck = Boolean(deckId) && cardsDeckIdRef.current === deckId;
+          const knownIds = new Set((addedCardsRef.current || []).map((card) => card.id));
+          const nextCards = sameDeck
+            ? [
+              ...(addedCardsRef.current || []),
+              ...sharedCards.filter((card) => !knownIds.has(card.id)),
+            ]
+            : sharedCards;
+
+          update({
+            addedCards: nextCards,
+            cardsDeckId: deckId || null,
+            pipelineCompleted: sharedCards.length > 0 || pipelineCompletedRef.current,
+            pipelineDest: effectiveTrip?.destination || "Lisbon, Portugal",
+          });
+
           navigate("/hub");
           return;
         }
+
+        // Reset swipe progress so the new member starts fresh with the workspace's shared card deck
+        update({
+          idx: 0,
+          likes: 0,
+          skips: 0,
+          tagged: {},
+          addedCards: sharedCards,
+          cardsDeckId: deckId || null,
+          pipelineCompleted: sharedCards.length > 0,
+          pipelineDest: effectiveTrip?.destination || "Lisbon, Portugal",
+          pipelineThinFallback: false,
+        });
 
         // Check if this user has completed their personal preferences yet.
         // New joiners haven't gone through setup/step3, so send them there

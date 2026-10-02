@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
 import { CARD_DATA } from "../data/cards";
-import { PLAN } from "../data/plans";
 import { TASKS } from "../data/tasks";
 
 const LS_KEY = "tripder-state-v1";
@@ -9,11 +8,13 @@ const DEFAULT_STATE = {
   idx: 0,
   likes: 0,
   skips: 0,
-  mode: "balanced",
   tagged: {},
   addedCards: [],
+  // Which deck `addedCards` belongs to. Without it the local card list leaks
+  // across trips: a member who opens another trip's link keeps the previous
+  // trip's deck mixed into the new one.
+  cardsDeckId: null,
   styleSeen: false,
-  planSeen: false,
   dest: "",
   startDate: null,
   endDate: null,
@@ -22,34 +23,17 @@ const DEFAULT_STATE = {
   flight: null,
   carRental: null,
   styleName: "",
-  activeItineraryId: "balanced",
-  itineraryDrafts: {},
-  userSuggestedItineraries: [],
-  nextSuggestedNumber: 1,
   preferenceProfiles: {},
   tasks: TASKS,
-  itineraryVotes: {},
-  confirmedItineraryId: null,
+  // Day currently open on the plan screen. The plan itself lives in Supabase
+  // (trip_plans) so every member reads the same itinerary; only the UI cursor
+  // is device-local.
+  activeDayIndex: 0,
   pipelineCompleted: false,
   pipelineDest: "",
   pipelineThinFallback: false,
   tripId: null,
 };
-
-function isDefaultItinerary(id) {
-  return Boolean(PLAN[id]);
-}
-
-function getItinerary(state, id) {
-  if (isDefaultItinerary(id)) {
-    return { id, label: id, stops: PLAN[id].stops, kind: "default" };
-  }
-  return state.userSuggestedItineraries.find((itinerary) => itinerary.id === id) || null;
-}
-
-function getStops(state, id) {
-  return state.itineraryDrafts[id]?.stops || getItinerary(state, id)?.stops || [];
-}
 
 function load() {
   try {
@@ -139,99 +123,9 @@ export function useAppState() {
     });
   }, []);
 
-  const setMode = useCallback((mode) => {
+  const setActiveDayIndex = useCallback((index) => {
     setState((prev) => {
-      const next = { ...prev, mode, activeItineraryId: mode };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const selectItinerary = useCallback((id) => {
-    setState((prev) => {
-      if (!getItinerary(prev, id)) return prev;
-      const next = { ...prev, activeItineraryId: id, mode: isDefaultItinerary(id) ? id : prev.mode };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const setItineraryStops = useCallback((id, stops) => {
-    setState((prev) => {
-      if (!getItinerary(prev, id)) return prev;
-      const next = {
-        ...prev,
-        itineraryDrafts: { ...prev.itineraryDrafts, [id]: { stops } },
-      };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const discardItineraryDraft = useCallback((id) => {
-    setState((prev) => {
-      if (!prev.itineraryDrafts[id]) return prev;
-      const { [id]: _, ...itineraryDrafts } = prev.itineraryDrafts;
-      const next = { ...prev, itineraryDrafts };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const saveItinerarySnapshot = useCallback((id) => {
-    setState((prev) => {
-      const source = getItinerary(prev, id);
-      if (!source) return prev;
-      const number = prev.nextSuggestedNumber;
-      const itinerary = {
-        id: `user-suggested-${number}`,
-        label: `User-suggested ${number}`,
-        kind: "suggested",
-        sourceId: id,
-        baseMode: isDefaultItinerary(id) ? id : source.baseMode || "balanced",
-        stops: getStops(prev, id),
-      };
-      const { [id]: _, ...itineraryDrafts } = prev.itineraryDrafts;
-      const next = {
-        ...prev,
-        activeItineraryId: itinerary.id,
-        itineraryDrafts,
-        userSuggestedItineraries: [...prev.userSuggestedItineraries, itinerary],
-        nextSuggestedNumber: number + 1,
-      };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const deleteSuggestedItinerary = useCallback((id) => {
-    setState((prev) => {
-      const index = prev.userSuggestedItineraries.findIndex((itinerary) => itinerary.id === id);
-      if (index < 0) return prev;
-      const { [id]: _, ...itineraryDrafts } = prev.itineraryDrafts;
-      const userSuggestedItineraries = prev.userSuggestedItineraries.filter((itinerary) => itinerary.id !== id);
-      const previous = prev.userSuggestedItineraries[index - 1];
-      const next = {
-        ...prev,
-        itineraryDrafts,
-        userSuggestedItineraries,
-        activeItineraryId: prev.activeItineraryId === id ? previous?.id || "balanced" : prev.activeItineraryId,
-      };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const restoreSuggestedItinerary = useCallback((itinerary, index) => {
-    setState((prev) => {
-      if (prev.userSuggestedItineraries.some((item) => item.id === itinerary.id)) return prev;
-      const userSuggestedItineraries = [...prev.userSuggestedItineraries];
-      userSuggestedItineraries.splice(index, 0, itinerary);
-      const next = {
-        ...prev,
-        userSuggestedItineraries,
-        activeItineraryId: itinerary.id,
-      };
+      const next = { ...prev, activeDayIndex: Math.max(0, index) };
       save(next);
       return next;
     });
@@ -288,14 +182,6 @@ export function useAppState() {
   const markStyleSeen = useCallback((name) => {
     setState((prev) => {
       const next = { ...prev, styleSeen: true, styleName: name };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const markPlanSeen = useCallback(() => {
-    setState((prev) => {
-      const next = { ...prev, planSeen: true };
       save(next);
       return next;
     });
@@ -421,39 +307,6 @@ export function useAppState() {
     });
   }, []);
 
-  const castVote = useCallback((itineraryId) => {
-    setState((prev) => {
-      const allIds = [
-        "balanced",
-        "foodfirst",
-        "slower",
-        ...prev.userSuggestedItineraries.map(i => i.id)
-      ];
-      const nextVotes = { ...prev.itineraryVotes };
-      
-      // The user casts 1 vote
-      nextVotes[itineraryId] = (nextVotes[itineraryId] || 0) + 1;
-
-      // Simulate 3 other members voting randomly, but slightly preferring the user's choice
-      for (let i = 0; i < 3; i++) {
-        const randomId = Math.random() > 0.4 ? itineraryId : allIds[Math.floor(Math.random() * allIds.length)];
-        nextVotes[randomId] = (nextVotes[randomId] || 0) + 1;
-      }
-
-      const next = { ...prev, itineraryVotes: nextVotes };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const confirmItinerary = useCallback((id) => {
-    setState((prev) => {
-      const next = { ...prev, confirmedItineraryId: id };
-      save(next);
-      return next;
-    });
-  }, []);
-
   const allCards = useMemo(() => [...CARD_DATA, ...state.addedCards], [state.addedCards]);
 
   const reasonCount = useMemo(
@@ -461,42 +314,23 @@ export function useAppState() {
     [state.tagged],
   );
   const finished = state.idx >= allCards.length;
-  const activeItinerary = useMemo(
-    () => getItinerary(state, state.activeItineraryId) || getItinerary(state, "balanced"),
-    [state],
-  );
-  const activeStops = useMemo(
-    () => getStops(state, activeItinerary.id),
-    [state, activeItinerary],
-  );
-  const isItineraryDirty = Boolean(state.itineraryDrafts[activeItinerary.id]);
 
   return {
     ...state,
     allCards,
     finished,
     reasonCount,
-    activeItinerary,
-    activeStops,
-    isItineraryDirty,
     update,
     swipeCard,
     saveReason,
-    setMode,
-    selectItinerary,
-    setItineraryStops,
-    discardItineraryDraft,
-    saveItinerarySnapshot,
-    deleteSuggestedItinerary,
-    restoreSuggestedItinerary,
     selectHotel,
     selectFlight,
     selectCarRental,
     setDest,
     setDates,
     setLeader,
+    setActiveDayIndex,
     markStyleSeen,
-    markPlanSeen,
     appendCard,
     appendGeneratedCards,
     markPipelineCompleted,
@@ -508,7 +342,5 @@ export function useAppState() {
     acceptTask,
     completeTask,
     removeTask,
-    castVote,
-    confirmItinerary,
   };
 }

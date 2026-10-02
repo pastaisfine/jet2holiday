@@ -10,9 +10,10 @@ import { usePipeline, startPipeline } from "../services/generateTrip";
 import { supabase } from "../lib/supabase";
 import { CARD_DATA } from "../data/cards";
 import { normaliseStoredPreferences } from "../lib/preferenceProfile";
-import { analyzePreferences, savePreferenceSummary } from "../services/preference";
+import { addSwipedKey, buildSwipedKeys, partitionDeck } from "../lib/swipeDeck";
+import { analyzePreferences, savePreferenceSummary, getPreferenceSummary } from "../services/preference";
 import { preloadImage } from "../services/imagePreloader";
-import { getTripDeckId } from "../services/tripService";
+import { getTripDeckId, getUserSwipes } from "../services/tripService";
 
 const LISBON_FALLBACK = "Lisbon, Portugal";
 
@@ -64,7 +65,6 @@ export default function SwipeScreen({ useAppState }) {
   const navigate = useNavigate();
   const { profile, session } = useAuth();
   const {
-    idx,
     likes,
     skips,
     swipeCard,
@@ -80,6 +80,7 @@ export default function SwipeScreen({ useAppState }) {
     tripId,
     update,
     addedCards,
+    tagged,
     pipelineThinFallback,
   } = useAppState;
   const pipeline = usePipeline();
@@ -88,6 +89,62 @@ export default function SwipeScreen({ useAppState }) {
   const currentSwipeIdRef = useRef(null);
   const preferenceAnalysisStartedRef = useRef(false);
   const lastSwipePersistRef = useRef(Promise.resolve());
+
+  // Cards this member has already judged, rebuilt from the database. Until the
+  // read resolves the deck renders whole, so a slow query costs a moment of
+  // over-showing rather than blocking the screen.
+  const [swipedKeys, setSwipedKeys] = useState(() => ({ ids: new Set(), names: new Set() }));
+  const taggedRef = useRef(tagged);
+  useEffect(() => {
+    taggedRef.current = tagged;
+  }, [tagged]);
+
+  const hydratedScopeRef = useRef(null);
+  useEffect(() => {
+    if (!session?.user?.id) return undefined;
+
+    const scope = `${session.user.id}::${tripId || ""}::${dest || LISBON_FALLBACK}`;
+    if (hydratedScopeRef.current === scope) return undefined;
+    hydratedScopeRef.current = scope;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const rows = await getUserSwipes({ tripId, destination: dest || LISBON_FALLBACK });
+        if (cancelled) return;
+
+        setSwipedKeys(buildSwipedKeys(rows));
+
+        // Local reasons win over the stored row so a just-saved reason is not
+        // briefly reverted by a slower read; the DB fills in everything from
+        // earlier sessions that this device never had.
+        const taggedFromDb = {};
+        for (const row of rows) {
+          if (row.card_id == null) continue;
+          taggedFromDb[String(row.card_id)] = {
+            dir: row.direction === "like" ? "yes" : "no",
+            reasons: Array.isArray(row.reasons) ? row.reasons : [],
+          };
+        }
+
+        update({
+          likes: rows.filter((row) => row.direction === "like").length,
+          skips: rows.filter((row) => row.direction === "skip").length,
+          idx: rows.length,
+          tagged: { ...taggedFromDb, ...taggedRef.current },
+        });
+      } catch (error) {
+        // Progress falls back to whatever localStorage held; the screen stays
+        // usable rather than blocking on a failed read.
+        console.warn("Could not load swipe progress:", error?.message || error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, tripId, dest, update]);
 
   const [preferenceOpen, setPreferenceOpen] = useState(() => sessionStorage.getItem("edit-preferences") === "true");
   const [preferenceAnalysisStatus, setPreferenceAnalysisStatus] =
@@ -132,6 +189,23 @@ export default function SwipeScreen({ useAppState }) {
         : [],
       category: swipe.category || null,
     }));
+
+    // A finished deck must not re-bill an analysis on every refresh: when the
+    // stored summary already covers exactly these swipes, reuse it. The Style
+    // screen prefers the durable row over the session hand-off anyway, so
+    // skipping the call loses nothing.
+    try {
+      const stored = await getPreferenceSummary({ tripId, destination });
+      if (stored && stored.swipe_count === swipes.length) {
+        setPreferenceAnalysisStatus("success");
+        return;
+      }
+    } catch (lookupError) {
+      console.warn(
+        "[Preference Agent] Could not check the stored summary:",
+        lookupError
+      );
+    }
 
     const result = await analyzePreferences({
       profile: {
@@ -233,6 +307,28 @@ export default function SwipeScreen({ useAppState }) {
 
   const [readyCardIds, setReadyCardIds] = useState(() => new Set(CARD_DATA.map((c) => c.id)));
 
+  // Hard lock: once the leader starts the group build, the preference snapshot
+  // is frozen. The database trigger enforces it; this state keeps the deck
+  // from pretending otherwise. Keyed by trip so switching trips cannot show a
+  // stale lock, and a failed fetch fails open rather than closed.
+  const [lockByTrip, setLockByTrip] = useState({});
+  useEffect(() => {
+    if (!tripId) return undefined;
+    let active = true;
+    supabase
+      .from("trips")
+      .select("preferences_locked_at")
+      .eq("id", tripId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active && data) {
+          setLockByTrip((prev) => ({ ...prev, [tripId]: data.preferences_locked_at || null }));
+        }
+      });
+    return () => { active = false; };
+  }, [tripId]);
+  const locked = Boolean(tripId) && Boolean(lockByTrip[tripId]);
+
   const addedCardsRef = useRef(addedCards);
   useEffect(() => {
     addedCardsRef.current = addedCards;
@@ -259,7 +355,13 @@ export default function SwipeScreen({ useAppState }) {
     return generatedCards;
   }, [showFallbackDeck, allCards, readyCardIds, generatedCards]);
 
-  const remaining = visibleCards.slice(idx);
+  // Progress is the difference between the deck and the judged set, never a
+  // positional counter: a refresh, an invite link, or a new device all rebuild
+  // from the same durable swipe rows.
+  const { unswiped, swipedCount } = useMemo(
+    () => partitionDeck(visibleCards, swipedKeys),
+    [visibleCards, swipedKeys],
+  );
   const total = visibleCards.length;
   const spiralItems = useMemo(
     () => visibleCards.map((card) => ({ id: card.id, src: card.img, alt: card.name })),
@@ -287,13 +389,16 @@ export default function SwipeScreen({ useAppState }) {
     (async () => {
       const deckId = await getTripDeckId(tripId);
       if (!deckId) return;
+      // Record which deck the resumed cards belong to, so opening another
+      // trip's link later can tell the decks apart.
+      update({ cardsDeckId: deckId });
       await startPipeline({
         destination: dest || LISBON_FALLBACK,
         preferences: preferences || {},
         tripId,
       });
     })();
-  }, [tripId, session?.user?.id, pipeline.phase, dest, preferences, addedCards]);
+  }, [tripId, session?.user?.id, pipeline.phase, dest, preferences, addedCards, update]);
 
   // Ingest streamed deck rows into the card deck. Cards arrive already in UI
   // shape, so this is an append rather than a mapping step, and the deck grows
@@ -347,15 +452,26 @@ export default function SwipeScreen({ useAppState }) {
   }, [pipelineThinFallback, generatedCards.length, update]);
 
   const handleVerdict = (dir) => {
-  const card = visibleCards[idx];
-  if (!card) return;
+  const card = unswiped[0];
+  if (!card || locked) return;
 
   const swipeId = crypto.randomUUID();
   currentSwipeIdRef.current = swipeId;
 
   swipeCard(dir);
 
-  persistSwipe(card, dir, null, swipeId);
+  // The card disappears the moment the verdict is cast, from the same key set
+  // the durable rows produced, so the optimistic update and the next refresh
+  // agree about what is left.
+  setSwipedKeys((prev) => addSwipedKey(prev, card));
+
+  const tracked = persistSwipe(card, dir, null, swipeId).then((id) => {
+    // The stored row may pre-date this session; keep the reason save pointed
+    // at the row that actually exists.
+    if (id) currentSwipeIdRef.current = id;
+    return id;
+  });
+  lastSwipePersistRef.current = tracked;
 
   setReasonCard(card);
   setReasonDir(dir);
@@ -364,61 +480,91 @@ export default function SwipeScreen({ useAppState }) {
   dispatchSheets({ type: "reason" });
 };
 
-  // Synchronous per-swipe upsert into public.swipes (fire-and-forget, never blocks UI)
+  // One verdict per (member, trip/destination, place), never a second row.
+  //
+  // PostgREST's on_conflict cannot name the partial unique indexes that enforce
+  // this, so the existing row is looked up first and updated in place -- the
+  // same pattern savePreferenceSummary uses. Never rejects: a swipe is a
+  // fire-and-forget write, and a failure is logged rather than allowed to
+  // interrupt the deck.
   const persistSwipe = useCallback(
-  (card, dir, reasons = null, id = null) => {
+  async (card, dir, reasons = null, knownId = null) => {
     if (!session?.user?.id || !card) {
-      return Promise.resolve();
+      return null;
     }
-
-    const swipeId =
-      id || currentSwipeIdRef.current || crypto.randomUUID();
 
     const finalReasons =
       reasons && reasons.length > 0 ? reasons : null;
 
-    const finalReason = finalReasons
-      ? finalReasons.join(", ")
-      : null;
+    const row = {
+      user_id: session.user.id,
+      card_id: String(card.id),
+      card_name: card.name,
+      // Lets the Preference Agent see that a skipped place was a food venue
+      // rather than inferring it from the name. Null for user-added places,
+      // which have no category anywhere in the system.
+      category: card.category || null,
+      destination: dest || LISBON_FALLBACK,
+      direction: dir === "yes" ? "like" : "skip",
+      reasons: finalReasons,
+      reason: finalReasons ? finalReasons.join(", ") : null,
+      trip_id: tripId || null,
+    };
 
-    const persistPromise = supabase
-      .from("swipes")
-      .upsert(
-        {
-          id: swipeId,
-          user_id: session.user.id,
-          card_id: String(card.id),
-          card_name: card.name,
-          // Lets the Preference Agent see that a skipped place was a food venue
-          // rather than inferring it from the name. Null for user-added places,
-          // which have no category anywhere in the system.
-          category: card.category || null,
-          destination: dest || LISBON_FALLBACK,
-          direction: dir === "yes" ? "like" : "skip",
-          reasons: finalReasons,
-          reason: finalReason,
-          trip_id: tripId || null,
-        },
-        { onConflict: "id" }
-      )
-      .then(({ error }) => {
-        if (error) {
-          console.warn(
-            "Swipe persistence failed:",
-            error.message
-          );
-          throw error;
+    const findExisting = () => {
+      let query = supabase
+        .from("swipes")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .eq("card_id", String(card.id));
+
+      query = tripId
+        ? query.eq("trip_id", tripId)
+        : query.is("trip_id", null).eq("destination", row.destination);
+
+      return query.limit(1).maybeSingle();
+    };
+
+    try {
+      const { data: existing, error: lookupError } = await findExisting();
+      if (lookupError) throw lookupError;
+
+      if (existing) {
+        const { error } = await supabase
+          .from("swipes")
+          .update(row)
+          .eq("id", existing.id);
+
+        if (error) throw error;
+        return existing.id;
+      }
+
+      const id = knownId || crypto.randomUUID();
+      const { error } = await supabase.from("swipes").insert({ ...row, id });
+
+      if (error) {
+        // A concurrent tab inserted the same verdict between the lookup and
+        // this insert. Adopt its row rather than failing the swipe.
+        if (error.code === "23505") {
+          const { data: conflict } = await findExisting();
+          if (conflict?.id) {
+            await supabase.from("swipes").update(row).eq("id", conflict.id);
+            return conflict.id;
+          }
         }
-      });
+        throw error;
+      }
 
-    lastSwipePersistRef.current = persistPromise.catch(() => {});
-
-    return persistPromise;
+      return id;
+    } catch (error) {
+      console.warn("Swipe persistence failed:", error?.message || error);
+      return knownId || null;
+    }
   },
   [session, dest, tripId]
 );
 
-  const saveAndClose = () => {
+  const saveAndClose = async () => {
     if (!reasonCard) {
       dispatchSheets({ type: "close" });
       return;
@@ -428,13 +574,23 @@ export default function SwipeScreen({ useAppState }) {
     const finalReasons = reasons.length > 0 ? reasons : null;
 
     saveReason(reasonCard.id, reasonDir, reasons);
-    persistSwipe(reasonCard, reasonDir, finalReasons, currentSwipeIdRef.current);
+
+    // Wait for the verdict's own write so the reasons land on the same row
+    // instead of racing it.
+    const persistedId = await lastSwipePersistRef.current;
+    await persistSwipe(
+      reasonCard,
+      reasonDir,
+      finalReasons,
+      persistedId || currentSwipeIdRef.current
+    );
+
     dispatchSheets({ type: "close" });
   };
 
 useEffect(() => {
   if (total === 0) return;
-  if (idx < total) return;
+  if (unswiped.length > 0) return;
   if (sheets.reason) return;
   if (pipeline.phase === "generating") return;
   if (!session?.user?.id) return;
@@ -444,7 +600,7 @@ useEffect(() => {
 
   runPreferenceAnalysis();
 }, [
-  idx,
+  unswiped.length,
   total,
   sheets.reason,
   pipeline.phase,
@@ -453,7 +609,7 @@ useEffect(() => {
 ]);
 
   const openDetail = (card) => {
-    setDetailCard(card || (idx < total ? visibleCards[idx] : null));
+    setDetailCard(card || unswiped[0] || null);
     dispatchSheets({ type: "detail" });
   };
 
@@ -554,7 +710,7 @@ return (
           <div>
             <div className="eyebrow" style={{ color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 11 }}>Swipe deck</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, marginTop: 2, color: "var(--fg)" }}>
-              {Math.min(idx + 1, total)} <span style={{ color: "var(--muted)", fontWeight: 400 }}>of {total} places</span>
+              {unswiped.length === 0 ? total : Math.min(swipedCount + 1, total)} <span style={{ color: "var(--muted)", fontWeight: 400 }}>of {total} places</span>
             </div>
           </div>
           <div className="chip" style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--fg)", fontWeight: 600, fontSize: 12, padding: "4px 12px" }}>
@@ -584,7 +740,23 @@ return (
           </div>
         )}
 
-        {idx >= total && !sheets.reason ? (
+        {locked ? (
+          <div className="deck-zone">
+            <div className="deck sw-empty card">
+              <div className="eyebrow">Preferences locked</div>
+              <h2 className="h-display" style={{ fontSize: 23 }}>
+                The group plan is under way.
+              </h2>
+              <p className="splash-copy" style={{ textAlign: "center" }}>
+                The trip creator started the shared build, so swiping is closed for this trip.
+                Your preferences stay exactly as you left them.
+              </p>
+              <button className="btn btn-primary" onClick={() => navigate("/plan")}>
+                View the group plan
+              </button>
+            </div>
+          </div>
+        ) : unswiped.length === 0 && !sheets.reason ? (
           <div className="deck-zone">
             {pipeline.phase === "generating" ? (
               <div className="deck">
@@ -657,11 +829,11 @@ return (
         ) : (
           <div className="deck-zone">
           <div className="deck">
-            {remaining.slice(0, 3).map((card, i) => {
+            {unswiped.slice(0, 3).map((card, i) => {
               const stacked = i;
               return (
                 <SwipeCard
-                  key={card.id + "-" + (idx + i)}
+                  key={card.id}
                   card={card}
                   stacked={stacked}
                   onVerdict={handleVerdict}
@@ -673,7 +845,7 @@ return (
           </div>
         )}
 
-        {idx < total && (
+        {unswiped.length > 0 && (
           <div className="sw-actions">
             <button className="sw-btn no" onClick={() => handleVerdict("no")} aria-label="Skip">
               <XIcon />
