@@ -202,6 +202,7 @@ export async function savePreferenceSummary({
   metadata,
   tripId,
   destination,
+  expectedUserId,
 }) {
   if (!summary) {
     throw new Error("Cannot save a preference summary without a summary.");
@@ -218,6 +219,16 @@ export async function savePreferenceSummary({
 
   if (!userId) {
     throw new Error("User is not authenticated.");
+  }
+
+  // A scope change or account switch can land while an analysis is in flight.
+  // The summary belongs to the traveller it was computed for, so a session that
+  // moved on must not have it filed against the new account.
+  if (expectedUserId && userId !== expectedUserId) {
+    console.warn(
+      "Skipping preference summary save: the session changed during the analysis."
+    );
+    return;
   }
 
   const row = toRow({ summary, metadata, userId, tripId, destination });
@@ -251,5 +262,108 @@ export async function savePreferenceSummary({
 
   if (error) {
     throw error;
+  }
+}
+
+// ─── The session hand-off ────────────────────────────────────────────────────
+//
+// The agent's summary is also written to sessionStorage the moment it is
+// produced, so the style screen can render it without waiting for a round trip.
+// That copy is tab-scoped and disposable; the durable row written by
+// savePreferenceSummary is the source of truth, and the style screen prefers it
+// wherever both exist.
+//
+// The key is scoped exactly like the durable rows: to the trip when the
+// traveller is on one, and to the destination otherwise. A destination is only
+// a city name, so keying on it alone would let two trips to the same city --
+// or two accounts sharing a tab -- read each other's hand-off.
+
+const PREFERENCE_HANDOFF_PREFIX = "tripder-preference-summary";
+
+function preferenceHandoffKey({ userId, tripId, destination }) {
+  return `${PREFERENCE_HANDOFF_PREFIX}:${userId}:${tripId || destination}`;
+}
+
+// True when a stored summary was derived from exactly this many swipes, so it
+// still covers the deck and need not be re-billed. Accepts both shapes: the
+// hand-off's camelCase metadata and the durable row's snake_case column.
+export function summaryCoversSwipes(summary, swipeCount) {
+  const storedCount = summary?.metadata?.swipeCount ?? summary?.swipe_count;
+  return storedCount === swipeCount;
+}
+
+// The hand-off for this traveller and scope, or null. A bare summary with no
+// metadata is still valid -- an earlier build wrote one under destination-scoped
+// keys -- but unreadable JSON is treated as absent, never as a hit.
+export function readPreferenceHandoff({ userId, tripId, destination }) {
+  if (!userId) return null;
+
+  try {
+    const stored = sessionStorage.getItem(
+      preferenceHandoffKey({ userId, tripId, destination })
+    );
+    if (!stored) return null;
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    if (
+      parsed.summary &&
+      typeof parsed.summary === "object" &&
+      !Array.isArray(parsed.summary) &&
+      Object.keys(parsed.summary).length > 0
+    ) {
+      return { summary: parsed.summary, metadata: parsed.metadata || {} };
+    }
+
+    // Not the wrapper shape, so it must be a bare summary. Anything carrying
+    // the wrapper's own markers (or holding nothing at all) is malformed.
+    if (
+      "summary" in parsed ||
+      "metadata" in parsed ||
+      Object.keys(parsed).length === 0
+    ) {
+      return null;
+    }
+
+    return { summary: parsed, metadata: {} };
+  } catch (error) {
+    console.warn("Failed to read the preference hand-off:", error);
+    return null;
+  }
+}
+
+// A failed write costs nothing: the durable row is the source of truth, so
+// storage being unavailable must not fail the analysis around it.
+export function writePreferenceHandoff({
+  userId,
+  tripId,
+  destination,
+  summary,
+  metadata,
+}) {
+  if (!userId || !summary) return;
+
+  try {
+    sessionStorage.setItem(
+      preferenceHandoffKey({ userId, tripId, destination }),
+      JSON.stringify({ summary, metadata })
+    );
+  } catch (error) {
+    console.warn("Failed to write the preference hand-off:", error);
+  }
+}
+
+export function clearPreferenceHandoff({ userId, tripId, destination }) {
+  if (!userId) return;
+
+  try {
+    sessionStorage.removeItem(
+      preferenceHandoffKey({ userId, tripId, destination })
+    );
+  } catch (error) {
+    console.warn("Failed to clear the preference hand-off:", error);
   }
 }

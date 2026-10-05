@@ -11,7 +11,15 @@ import { supabase } from "../lib/supabase";
 import { CARD_DATA } from "../data/cards";
 import { normaliseStoredPreferences } from "../lib/preferenceProfile";
 import { addSwipedKey, buildSwipedKeys, partitionDeck } from "../lib/swipeDeck";
-import { analyzePreferences, savePreferenceSummary, getPreferenceSummary } from "../services/preference";
+import {
+  analyzePreferences,
+  savePreferenceSummary,
+  getPreferenceSummary,
+  readPreferenceHandoff,
+  writePreferenceHandoff,
+  clearPreferenceHandoff,
+  summaryCoversSwipes,
+} from "../services/preference";
 import { preloadImage } from "../services/imagePreloader";
 import { getTripDeckId, getUserSwipes } from "../services/tripService";
 
@@ -86,11 +94,22 @@ export default function SwipeScreen({ useAppState }) {
   const pipeline = usePipeline();
   const preferenceId = profile?.id || profile?.username || "guest";
   const ingestedRef = useRef(0);
-  const preferenceAnalysisKey = session?.user?.id
-    ? `tripder-preference-summary:${session.user.id}:${dest || LISBON_FALLBACK}`
-    : null;
+  // The scope every summary store agrees on: the trip when there is one, the
+  // destination otherwise. readPreferenceHandoff builds its key from this.
+  const handoffScope = useMemo(
+    () => ({
+      userId: session?.user?.id,
+      tripId,
+      destination: dest || LISBON_FALLBACK,
+    }),
+    [session?.user?.id, tripId, dest]
+  );
   const currentSwipeIdRef = useRef(null);
-  const preferenceAnalysisStartedRef = useRef(false);
+  // The scope the analysis has been started for, if any. Holding the scope
+  // rather than a boolean means a scope change -- switching accounts, or a
+  // different destination -- re-arms the trigger without an effect that would
+  // reset on StrictMode's double invoke.
+  const preferenceAnalysisScopeRef = useRef(null);
   const lastSwipePersistRef = useRef(Promise.resolve());
 
   // Cards this member has already judged, rebuilt from the database. Until the
@@ -150,23 +169,47 @@ export default function SwipeScreen({ useAppState }) {
   }, [session?.user?.id, tripId, dest, update]);
 
   const [preferenceOpen, setPreferenceOpen] = useState(() => sessionStorage.getItem("edit-preferences") === "true");
-  const [preferenceAnalysisStatus, setPreferenceAnalysisStatus] =
-  useState("idle");
+  // The status is tagged with the scope it was produced for, so a late result
+  // from a previous scope can be ignored when rendering rather than guarded
+  // with a ref (which must not be read during render).
+  const [preferenceAnalysis, setPreferenceAnalysis] =
+  useState({ scope: null, status: "idle" });
+  const preferenceAnalysisStatus =
+    preferenceAnalysis.scope === handoffScope ? preferenceAnalysis.status : "idle";
 
-  // A cached summary is as good as a fresh one for enabling the hand-off: the
-  // screen the user reaches is identical. Folding the cache hit into the status
-  // during render means the cache-check effect never sets state on mount.
-  const analysisStatus =
-    preferenceAnalysisStatus === "idle" &&
-    preferenceAnalysisKey &&
-    sessionStorage.getItem(preferenceAnalysisKey)
+  // The session hand-off, read once per scope. A cached summary is good enough
+  // to enable the button before the freshness check has run: the screen the
+  // user reaches is identical either way, and a stale cache flips to
+  // "Analysing…" once runPreferenceAnalysis finds it out.
+  const handoff = useMemo(
+    () => readPreferenceHandoff(handoffScope),
+    [handoffScope]
+  );
+  const summaryStatus =
+    preferenceAnalysisStatus === "idle" && handoff
       ? "success"
       : preferenceAnalysisStatus;
 
   const [preferences, setPreferences] = useState(() => normaliseStoredPreferences({ ...emptyPreferences, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
 
-  const runPreferenceAnalysis = useCallback(async () => {
-  setPreferenceAnalysisStatus("loading");
+  const runPreferenceAnalysis = useCallback(async ({ force = false } = {}) => {
+  const scope = handoffScope;
+  const cached = readPreferenceHandoff(scope);
+  // Tagging every status with this call's scope means the render only shows it
+  // while the scope still matches. The ref check stops a late result from a
+  // previous scope replacing the current scope's status outright; the tag stops
+  // it rendering even if it lands between the ref moving on and then.
+  const setStatus = (status) => {
+    if (preferenceAnalysisScopeRef.current !== scope) return;
+    setPreferenceAnalysis({ scope, status });
+  };
+
+  // A hand-off already on screen reads as success, so only show "Analysing…"
+  // when there is nothing to show (or a retry is deliberately replacing it).
+  // A stale hand-off falls through and shows loading just before the call.
+  if (force || !cached) {
+    setStatus("loading");
+  }
 
   try {
     await lastSwipePersistRef.current;
@@ -203,22 +246,31 @@ export default function SwipeScreen({ useAppState }) {
       category: swipe.category || null,
     }));
 
-    // A finished deck must not re-bill an analysis on every refresh: when the
-    // stored summary already covers exactly these swipes, reuse it. The Style
-    // screen prefers the durable row over the session hand-off anyway, so
-    // skipping the call loses nothing.
-    try {
-      const stored = await getPreferenceSummary({ tripId, destination });
-      if (stored && stored.swipe_count === swipes.length) {
-        setPreferenceAnalysisStatus("success");
+    // Reuse only a summary that covers exactly these swipes. The hand-off is
+    // checked first because it is already in memory; a stale one falls through
+    // to the durable row, and a stale durable row re-runs the agent. Retry
+    // passes force, which skips both stores so the button always re-bills.
+    if (!force) {
+      if (summaryCoversSwipes(cached, swipes.length)) {
+        setStatus("success");
         return;
       }
-    } catch (lookupError) {
-      console.warn(
-        "[Preference Agent] Could not check the stored summary:",
-        lookupError
-      );
+
+      try {
+        const stored = await getPreferenceSummary({ tripId, destination });
+        if (summaryCoversSwipes(stored, swipes.length)) {
+          setStatus("success");
+          return;
+        }
+      } catch (lookupError) {
+        console.warn(
+          "[Preference Agent] Could not check the stored summary:",
+          lookupError
+        );
+      }
     }
+
+    setStatus("loading");
 
     const result = await analyzePreferences({
       profile: {
@@ -245,22 +297,13 @@ export default function SwipeScreen({ useAppState }) {
 
     // metadata carries the counts the summary cannot state about itself -- how
     // many swipes it was derived from, and the exact category tally behind any
-    // claim in it. It travelled this far and was being dropped on the floor,
-    // leaving the style screen unable to say how much evidence it was standing
-    // on. Storing it under the same key is a deliberate break with the previous
-    // shape; the style screen reads both halves and tolerates a bare summary,
-    // so a tab that was mid-analysis when this shipped still renders. The key
-    // is scoped to the traveller and the destination so one account's hand-off
-    // cannot be read by another.
-    if (preferenceAnalysisKey) {
-      sessionStorage.setItem(
-        preferenceAnalysisKey,
-        JSON.stringify({
-          summary: result.summary,
-          metadata: result.metadata,
-        })
-      );
-    }
+    // claim in it. The style screen reads both halves and tolerates a bare
+    // summary; the helpers own the key and the shape (see services/preference).
+    writePreferenceHandoff({
+      ...scope,
+      summary: result.summary,
+      metadata: result.metadata,
+    });
 
     // sessionStorage above is only a hand-off to the style screen, which reads
     // it on mount; this is the copy that survives the tab. A failed write must
@@ -272,6 +315,7 @@ export default function SwipeScreen({ useAppState }) {
         metadata: result.metadata,
         tripId,
         destination,
+        expectedUserId: scope.userId,
       });
     } catch (saveError) {
       console.error(
@@ -280,15 +324,20 @@ export default function SwipeScreen({ useAppState }) {
       );
     }
 
-    setPreferenceAnalysisStatus("success");
+    setStatus("success");
   } catch (error) {
     console.error(
       "[Preference Agent] Analysis failed:",
       error
     );
 
-    preferenceAnalysisStartedRef.current = false;
-    setPreferenceAnalysisStatus("error");
+    // Only re-arm if the scope has not moved on: a late failure from the
+    // previous scope must not clear the new scope's guard. Its status is
+    // scope-tagged, so a stale error is ignored on render either way.
+    if (preferenceAnalysisScopeRef.current === scope) {
+      preferenceAnalysisScopeRef.current = null;
+    }
+    setStatus("error");
   }
 }, [
   session,
@@ -296,7 +345,7 @@ export default function SwipeScreen({ useAppState }) {
   preferences,
   dest,
   tripId,
-  preferenceAnalysisKey,
+  handoffScope,
 ]);
 
 
@@ -606,24 +655,17 @@ export default function SwipeScreen({ useAppState }) {
     dispatchSheets({ type: "close" });
   };
 
-// A summary already cached for this traveller and destination is reused instead
-// of calling the AI again. Marking the ref in its own effect keeps the cache
-// hit from reading as a branch of the analysis trigger below.
-useEffect(() => {
-  if (preferenceAnalysisKey && sessionStorage.getItem(preferenceAnalysisKey)) {
-    preferenceAnalysisStartedRef.current = true;
-  }
-}, [preferenceAnalysisKey]);
-
 useEffect(() => {
   if (total === 0) return;
   if (unswiped.length > 0) return;
   if (sheets.reason) return;
   if (pipeline.phase === "generating") return;
   if (!session?.user?.id) return;
-  if (preferenceAnalysisStartedRef.current) return;
+  // One run per scope: a subsequent render, or StrictMode's double invoke,
+  // sees the scope already recorded and does nothing.
+  if (preferenceAnalysisScopeRef.current === handoffScope) return;
 
-  preferenceAnalysisStartedRef.current = true;
+  preferenceAnalysisScopeRef.current = handoffScope;
   runPreferenceAnalysis();
 }, [
   unswiped.length,
@@ -631,7 +673,7 @@ useEffect(() => {
   sheets.reason,
   pipeline.phase,
   session,
-  preferenceAnalysisKey,
+  handoffScope,
   runPreferenceAnalysis,
 ]);
 
@@ -825,28 +867,29 @@ return (
 
                  <button
                     className="btn btn-primary"
-                    disabled={analysisStatus !== "success"}
+                    disabled={summaryStatus !== "success"}
                     onClick={() => navigate("/style")}
                   >
-                    {analysisStatus === "loading"
+                    {summaryStatus === "loading"
                       ? "Analysing your choices…"
-                      : analysisStatus === "success"
+                      : summaryStatus === "success"
                         ? "See my summary"
                         : "Preparing your summary…"}
                   </button>
 
-                {(analysisStatus === "success" ||
-                  analysisStatus === "error") && (
+                {(summaryStatus === "success" ||
+                  summaryStatus === "error") && (
                   <button
                     className="btn btn-secondary"
                     style={{ marginTop: 8 }}
                     onClick={() => {
-                      if (preferenceAnalysisKey) {
-                        sessionStorage.removeItem(preferenceAnalysisKey);
-                      }
+                      // Retry always re-runs the agent: clearing the hand-off
+                      // and forcing past the reuse checks is what makes the
+                      // button mean "regenerate", not "show me the cache".
+                      clearPreferenceHandoff(handoffScope);
+                      preferenceAnalysisScopeRef.current = handoffScope;
 
-                      preferenceAnalysisStartedRef.current = true;
-                      runPreferenceAnalysis();
+                      runPreferenceAnalysis({ force: true });
                     }}
                   >
                     Retry analysis

@@ -3,7 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import StyleCard from "../components/StyleCard";
 import InfiniteSpiral from "../components/InfiniteSpiral";
-import { getLikedSwipes, getPreferenceSummary } from "../services/preference";
+import {
+  getLikedSwipes,
+  getPreferenceSummary,
+  readPreferenceHandoff,
+} from "../services/preference";
 import {
   CATEGORIES,
   toInterestBars,
@@ -31,29 +35,8 @@ const CREW = [
   { name: "Marcus", label: "Night-Optimist" },
 ];
 
-// The agent's summary and the counts behind it are written to sessionStorage
-// together, under a key scoped to the traveller and the destination. A bare
-// summary with no metadata is still valid -- a tab that was part-way through
-// the analysis when the hand-off shape changed has one. Null when there is no
-// hand-off for this key at all.
-function readAnalysis(key) {
-  if (!key) return null;
-  try {
-    const stored = sessionStorage.getItem(key);
-    if (!stored) return null;
-
-    const parsed = JSON.parse(stored);
-    return parsed?.summary
-      ? { summary: parsed.summary, metadata: parsed.metadata || {} }
-      : { summary: parsed, metadata: {} };
-  } catch (error) {
-    console.error("Failed to parse sessionStorage:", error);
-    return null;
-  }
-}
-
 // The stored row speaks snake_case, the agent and this screen speak camelCase.
-// Kept next to readAnalysis so both shapes of the same analysis are visible in
+// Kept next to the screen so both shapes of the same analysis are visible in
 // one place, and so a column added to the table has exactly one reader to update.
 function fromRow(row) {
   return {
@@ -86,29 +69,34 @@ export default function StyleScreen({ useAppState }) {
   const preferenceId = profile?.id || profile?.username || "guest";
   const preferences = preferenceProfiles?.[preferenceId];
 
-  // The hand-off is scoped to the traveller and the destination: a single flat
-  // key let a second account -- or a second trip -- in the same tab read the
-  // summary the previous one left behind.
-  const preferenceAnalysisKey = profile?.id
-    ? `tripder-preference-summary:${profile.id}:${dest || LISBON_FALLBACK}`
-    : null;
-
-  // The profile can resolve after first paint. Deriving the hand-off on the key
+  // The profile can resolve after first paint. Deriving the hand-off per scope
   // rather than capturing it in state means the scoped copy is read as soon as
-  // the key is known, and an empty analysis stands in until then -- never the
-  // previous traveller's summary.
-  const sessionAnalysis = useMemo(
-    () => readAnalysis(preferenceAnalysisKey) || { summary: {}, metadata: {} },
-    [preferenceAnalysisKey]
+  // the traveller is known, and an empty analysis stands in until then -- never
+  // the previous traveller's summary. The helper owns the key and the shape.
+  const handoff = useMemo(
+    () =>
+      readPreferenceHandoff({
+        userId: profile?.id,
+        tripId,
+        destination: dest || LISBON_FALLBACK,
+      }) || { summary: {}, metadata: {} },
+    [profile?.id, tripId, dest]
   );
-  const [likedSwipes, setLikedSwipes] = useState([]);
-  const [stored, setStored] = useState(null);
+  // The evidence is tagged with the scope it was fetched for, so a scope change
+  // (account or destination) cannot let the previous scope's durable row mask
+  // the new scope's hand-off while the refetch is in flight.
+  const evidenceScope = `${profile?.id || "guest"}::${tripId || ""}::${dest || LISBON_FALLBACK}`;
+  const [storedEvidence, setStoredEvidence] = useState(null);
+  const evidence =
+    storedEvidence?.scope === evidenceScope ? storedEvidence : null;
+  const likedSwipes = useMemo(() => evidence?.rows || [], [evidence]);
+  const stored = evidence?.row || null;
 
   // The sessionStorage copy is what the swipe screen wrote on its way past: it
   // is immediate but tab-scoped, and it is missing everything that arrived
   // after the last analysis. The stored row is durable and is what the group
   // planner reads, so it wins where both exist.
-  const { summary, metadata } = stored ? fromRow(stored) : sessionAnalysis;
+  const { summary, metadata } = stored ? fromRow(stored) : handoff;
 
   useEffect(() => {
     let cancelled = false;
@@ -120,8 +108,7 @@ export default function StyleScreen({ useAppState }) {
     ])
       .then(([rows, row]) => {
         if (cancelled) return;
-        setLikedSwipes(rows);
-        setStored(row);
+        setStoredEvidence({ scope: evidenceScope, rows, row });
       })
       // A failed read costs the durable-evidence upgrade and nothing else: the
       // sessionStorage copy and the prose fallback still render a full profile.
@@ -132,7 +119,7 @@ export default function StyleScreen({ useAppState }) {
     return () => {
       cancelled = true;
     };
-  }, [tripId, dest]);
+  }, [profile?.id, tripId, dest, evidenceScope]);
 
   // Every planning constraint on the screen, resolved once.
   //
