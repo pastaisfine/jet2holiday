@@ -32,12 +32,15 @@ const CREW = [
 ];
 
 // The agent's summary and the counts behind it are written to sessionStorage
-// together. A bare summary with no metadata is still valid -- a tab that was
-// part-way through the analysis when the hand-off shape changed has one.
-function readAnalysis() {
+// together, under a key scoped to the traveller and the destination. A bare
+// summary with no metadata is still valid -- a tab that was part-way through
+// the analysis when the hand-off shape changed has one. Null when there is no
+// hand-off for this key at all.
+function readAnalysis(key) {
+  if (!key) return null;
   try {
-    const stored = sessionStorage.getItem("tripder-preference-summary");
-    if (!stored) return { summary: {}, metadata: {} };
+    const stored = sessionStorage.getItem(key);
+    if (!stored) return null;
 
     const parsed = JSON.parse(stored);
     return parsed?.summary
@@ -45,7 +48,7 @@ function readAnalysis() {
       : { summary: parsed, metadata: {} };
   } catch (error) {
     console.error("Failed to parse sessionStorage:", error);
-    return { summary: {}, metadata: {} };
+    return null;
   }
 }
 
@@ -83,7 +86,21 @@ export default function StyleScreen({ useAppState }) {
   const preferenceId = profile?.id || profile?.username || "guest";
   const preferences = preferenceProfiles?.[preferenceId];
 
-  const [analysis] = useState(readAnalysis);
+  // The hand-off is scoped to the traveller and the destination: a single flat
+  // key let a second account -- or a second trip -- in the same tab read the
+  // summary the previous one left behind.
+  const preferenceAnalysisKey = profile?.id
+    ? `tripder-preference-summary:${profile.id}:${dest || LISBON_FALLBACK}`
+    : null;
+
+  // The profile can resolve after first paint. Deriving the hand-off on the key
+  // rather than capturing it in state means the scoped copy is read as soon as
+  // the key is known, and an empty analysis stands in until then -- never the
+  // previous traveller's summary.
+  const sessionAnalysis = useMemo(
+    () => readAnalysis(preferenceAnalysisKey) || { summary: {}, metadata: {} },
+    [preferenceAnalysisKey]
+  );
   const [likedSwipes, setLikedSwipes] = useState([]);
   const [stored, setStored] = useState(null);
 
@@ -91,7 +108,7 @@ export default function StyleScreen({ useAppState }) {
   // is immediate but tab-scoped, and it is missing everything that arrived
   // after the last analysis. The stored row is durable and is what the group
   // planner reads, so it wins where both exist.
-  const { summary, metadata } = stored ? fromRow(stored) : analysis;
+  const { summary, metadata } = stored ? fromRow(stored) : sessionAnalysis;
 
   useEffect(() => {
     let cancelled = false;

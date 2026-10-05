@@ -86,6 +86,9 @@ export default function SwipeScreen({ useAppState }) {
   const pipeline = usePipeline();
   const preferenceId = profile?.id || profile?.username || "guest";
   const ingestedRef = useRef(0);
+  const preferenceAnalysisKey = session?.user?.id
+    ? `tripder-preference-summary:${session.user.id}:${dest || LISBON_FALLBACK}`
+    : null;
   const currentSwipeIdRef = useRef(null);
   const preferenceAnalysisStartedRef = useRef(false);
   const lastSwipePersistRef = useRef(Promise.resolve());
@@ -149,6 +152,16 @@ export default function SwipeScreen({ useAppState }) {
   const [preferenceOpen, setPreferenceOpen] = useState(() => sessionStorage.getItem("edit-preferences") === "true");
   const [preferenceAnalysisStatus, setPreferenceAnalysisStatus] =
   useState("idle");
+
+  // A cached summary is as good as a fresh one for enabling the hand-off: the
+  // screen the user reaches is identical. Folding the cache hit into the status
+  // during render means the cache-check effect never sets state on mount.
+  const analysisStatus =
+    preferenceAnalysisStatus === "idle" &&
+    preferenceAnalysisKey &&
+    sessionStorage.getItem(preferenceAnalysisKey)
+      ? "success"
+      : preferenceAnalysisStatus;
 
   const [preferences, setPreferences] = useState(() => normaliseStoredPreferences({ ...emptyPreferences, ...preferenceProfiles?.[preferenceId], dietary: preferenceProfiles?.[preferenceId]?.dietary || [] }));
 
@@ -236,14 +249,18 @@ export default function SwipeScreen({ useAppState }) {
     // leaving the style screen unable to say how much evidence it was standing
     // on. Storing it under the same key is a deliberate break with the previous
     // shape; the style screen reads both halves and tolerates a bare summary,
-    // so a tab that was mid-analysis when this shipped still renders.
-    sessionStorage.setItem(
-      "tripder-preference-summary",
-      JSON.stringify({
-        summary: result.summary,
-        metadata: result.metadata,
-      })
-    );
+    // so a tab that was mid-analysis when this shipped still renders. The key
+    // is scoped to the traveller and the destination so one account's hand-off
+    // cannot be read by another.
+    if (preferenceAnalysisKey) {
+      sessionStorage.setItem(
+        preferenceAnalysisKey,
+        JSON.stringify({
+          summary: result.summary,
+          metadata: result.metadata,
+        })
+      );
+    }
 
     // sessionStorage above is only a hand-off to the style screen, which reads
     // it on mount; this is the copy that survives the tab. A failed write must
@@ -279,6 +296,7 @@ export default function SwipeScreen({ useAppState }) {
   preferences,
   dest,
   tripId,
+  preferenceAnalysisKey,
 ]);
 
 
@@ -588,6 +606,15 @@ export default function SwipeScreen({ useAppState }) {
     dispatchSheets({ type: "close" });
   };
 
+// A summary already cached for this traveller and destination is reused instead
+// of calling the AI again. Marking the ref in its own effect keeps the cache
+// hit from reading as a branch of the analysis trigger below.
+useEffect(() => {
+  if (preferenceAnalysisKey && sessionStorage.getItem(preferenceAnalysisKey)) {
+    preferenceAnalysisStartedRef.current = true;
+  }
+}, [preferenceAnalysisKey]);
+
 useEffect(() => {
   if (total === 0) return;
   if (unswiped.length > 0) return;
@@ -597,7 +624,6 @@ useEffect(() => {
   if (preferenceAnalysisStartedRef.current) return;
 
   preferenceAnalysisStartedRef.current = true;
-
   runPreferenceAnalysis();
 }, [
   unswiped.length,
@@ -605,6 +631,7 @@ useEffect(() => {
   sheets.reason,
   pipeline.phase,
   session,
+  preferenceAnalysisKey,
   runPreferenceAnalysis,
 ]);
 
@@ -798,28 +825,33 @@ return (
 
                  <button
                     className="btn btn-primary"
-                    disabled={preferenceAnalysisStatus !== "success"}
+                    disabled={analysisStatus !== "success"}
                     onClick={() => navigate("/style")}
                   >
-                    {preferenceAnalysisStatus === "loading"
+                    {analysisStatus === "loading"
                       ? "Analysing your choices…"
-                      : preferenceAnalysisStatus === "success"
+                      : analysisStatus === "success"
                         ? "See my summary"
                         : "Preparing your summary…"}
                   </button>
 
-                 {preferenceAnalysisStatus === "error" && (
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => {
-                        preferenceAnalysisStartedRef.current = true;
-                        runPreferenceAnalysis();
-                      }}
-                    >
-                      Try again
-                    </button>
-                  )}
+                {(analysisStatus === "success" ||
+                  analysisStatus === "error") && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ marginTop: 8 }}
+                    onClick={() => {
+                      if (preferenceAnalysisKey) {
+                        sessionStorage.removeItem(preferenceAnalysisKey);
+                      }
 
+                      preferenceAnalysisStartedRef.current = true;
+                      runPreferenceAnalysis();
+                    }}
+                  >
+                    Retry analysis
+                  </button>
+                )}
                   <button className="btn btn-secondary" style={{ marginTop: 8 }} onClick={() => dispatchSheets({ type: "addPlace" })}>
                     More itineraries on your mind?
                   </button>
