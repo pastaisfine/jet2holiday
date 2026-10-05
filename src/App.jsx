@@ -84,6 +84,40 @@ function RequireAuth({ children }) {
   return children;
 }
 
+// The /style screen's back target depends on where it was entered from: the
+// swipe screen's locked card and the plan sheet pass state so the header's
+// back button returns there; every other entrance keeps the configured Done
+// screen, which is still the parent of the normal post-swipe flow.
+function styleBackOverride(state) {
+  if (state?.from === "swipe") return { back: "/swipe", backLabel: "Swipe" };
+  if (state?.from === "plan") return { back: "/plan", backLabel: "Plan" };
+  return null;
+}
+
+function ScreenFrame({ path, cfg, headerTrip, theme, toggleTheme, children }) {
+  const location = useLocation();
+  const override = path === "/style" ? styleBackOverride(location.state) : null;
+  const back = override?.back ?? cfg.back;
+  const backLabel = override?.backLabel ?? cfg.backLabel;
+
+  return (
+    <div className={`app${cfg.tabs ? " app--sidebar" : ""}`}>
+      {cfg.header && (
+        <AppHeader
+          invert={cfg.invert}
+          trip={headerTrip}
+          back={back}
+          backLabel={backLabel}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+      )}
+      {children}
+      {cfg.tabs && <TabBar active={cfg.active} />}
+    </div>
+  );
+}
+
 function Shell() {
   const appState = useAppState();
   const dateRange = fmtDateRange(appState.startDate, appState.endDate);
@@ -130,20 +164,15 @@ function Shell() {
                   key={path}
                   path={path}
                   element={
-                    <div className={`app${cfg.tabs ? " app--sidebar" : ""}`}>
-                      {cfg.header && (
-                        <AppHeader
-                          invert={cfg.invert}
-                          trip={AUTH_PATHS.includes(path) ? "" : (cfg.trip || trip)}
-                          back={cfg.back}
-                          backLabel={cfg.backLabel}
-                          theme={theme}
-                          toggleTheme={() => setTheme((current) => current === "dark" ? "light" : "dark")}
-                        />
-                      )}
+                    <ScreenFrame
+                      path={path}
+                      cfg={cfg}
+                      headerTrip={AUTH_PATHS.includes(path) ? "" : (cfg.trip || trip)}
+                      theme={theme}
+                      toggleTheme={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+                    >
                       {screens[path]}
-                      {cfg.tabs && <TabBar active={cfg.active} />}
-                    </div>
+                    </ScreenFrame>
                   }
                 />
               ))}

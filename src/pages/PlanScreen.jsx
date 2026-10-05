@@ -12,6 +12,7 @@ import WhyThisPlan from "../components/WhyThisPlan";
 import ReasonChips from "../components/ReasonChips";
 import { searchPlaces } from "../services/placesAutocomplete";
 import { getTripMembers } from "../services/tripService";
+import { getPreferenceSummary } from "../services/preference";
 import {
   callPlanAction,
   createSuggestion,
@@ -295,6 +296,20 @@ export default function PlanScreen({ useAppState }) {
     getTripMembers(tripId).then((list) => { if (active) setMembers(list); });
     return () => { active = false; };
   }, [tripId]);
+
+  // Whether the traveller reading this plan has a preference summary to
+  // review. Read-only existence check, never an agent run -- a member whose
+  // summary is missing (mid-swipe when the build started) gets no link, and an
+  // excluded member still gets theirs.
+  const [ownSummaryExists, setOwnSummaryExists] = useState(false);
+  useEffect(() => {
+    if (!tripId && !dest) return undefined;
+    let active = true;
+    getPreferenceSummary({ tripId, destination: dest })
+      .then((row) => { if (active) setOwnSummaryExists(Boolean(row)); })
+      .catch(() => { if (active) setOwnSummaryExists(false); });
+    return () => { active = false; };
+  }, [tripId, dest]);
 
   useEffect(() => {
     setRevealDismissed(isRevealDismissed(tripId));
@@ -819,15 +834,25 @@ export default function PlanScreen({ useAppState }) {
                   <CalendarBlank size={16} weight="bold" />
                   {shortDate(days[0]?.date)}-{shortDate(days[days.length - 1]?.date)} · {days.length} Day{days.length === 1 ? "" : "s"}
                 </span>
-                <span className="plan-avatars">
-                  {members.slice(0, 3).map((member) => (
-                    <span key={member.userId} className="plan-avatar" style={{ background: member.avatarColor }}>
-                      {(member.username || "?").slice(0, 1).toUpperCase()}
-                    </span>
-                  ))}
-                  <button className="plan-avatar plan-avatar-add" aria-label="Invite members" onClick={() => navigate("/group")}>
-                    <Plus size={13} weight="bold" />
-                  </button>
+                <span className="plan-meta-right">
+                  {ownSummaryExists && (
+                    <button
+                      className="plan-own-summary"
+                      onClick={() => navigate("/style", { state: { from: "plan" } })}
+                    >
+                      See my summary
+                    </button>
+                  )}
+                  <span className="plan-avatars">
+                    {members.slice(0, 3).map((member) => (
+                      <span key={member.userId} className="plan-avatar" style={{ background: member.avatarColor }}>
+                        {(member.username || "?").slice(0, 1).toUpperCase()}
+                      </span>
+                    ))}
+                    <button className="plan-avatar plan-avatar-add" aria-label="Invite members" onClick={() => navigate("/group")}>
+                      <Plus size={13} weight="bold" />
+                    </button>
+                  </span>
                 </span>
               </div>
             </div>

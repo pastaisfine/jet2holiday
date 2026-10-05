@@ -378,6 +378,11 @@ export default function SwipeScreen({ useAppState }) {
   // is frozen. The database trigger enforces it; this state keeps the deck
   // from pretending otherwise. Keyed by trip so switching trips cannot show a
   // stale lock, and a failed fetch fails open rather than closed.
+  //
+  // The value is tri-state: absent means the read has not resolved yet, null
+  // means resolved and unlocked, a timestamp means locked. The analysis effect
+  // waits on the resolved half (lockKnown) so it can never arm an agent run on
+  // a trip that locked while the screen was still mounting.
   const [lockByTrip, setLockByTrip] = useState({});
   useEffect(() => {
     if (!tripId) return undefined;
@@ -388,13 +393,41 @@ export default function SwipeScreen({ useAppState }) {
       .eq("id", tripId)
       .maybeSingle()
       .then(({ data }) => {
-        if (active && data) {
-          setLockByTrip((prev) => ({ ...prev, [tripId]: data.preferences_locked_at || null }));
+        if (active) {
+          setLockByTrip((prev) => ({ ...prev, [tripId]: data?.preferences_locked_at || null }));
+        }
+      })
+      .catch(() => {
+        // Fail open: no row read is no evidence of a lock.
+        if (active) {
+          setLockByTrip((prev) => ({ ...prev, [tripId]: prev[tripId] ?? null }));
         }
       });
     return () => { active = false; };
   }, [tripId]);
   const locked = Boolean(tripId) && Boolean(lockByTrip[tripId]);
+  const lockKnown = !tripId || tripId in lockByTrip;
+
+  // Durable-row half of the locked card's existence check: the hand-off
+  // covers the instant case above, and this is the copy that survives the
+  // tab. Read-only, never an agent run -- the deck-cleared effect stays away
+  // from locked trips, so nothing else produces a summary here. The verdict is
+  // tagged with the scope it was fetched for, so a scope change cannot show
+  // the previous scope's answer while the new read is in flight.
+  const [durableSummary, setDurableSummary] = useState({ scope: null, exists: null });
+  useEffect(() => {
+    if (!locked || !session?.user?.id || handoff) return undefined;
+    let cancelled = false;
+    getPreferenceSummary({ tripId, destination: dest || LISBON_FALLBACK })
+      .then((row) => { if (!cancelled) setDurableSummary({ scope: handoffScope, exists: Boolean(row) }); })
+      .catch(() => { if (!cancelled) setDurableSummary({ scope: handoffScope, exists: false }); });
+    return () => { cancelled = true; };
+  }, [locked, session?.user?.id, handoff, handoffScope, tripId, dest]);
+  const summaryExists = handoff
+    ? true
+    : durableSummary.scope === handoffScope
+      ? durableSummary.exists
+      : null;
 
   const addedCardsRef = useRef(addedCards);
   useEffect(() => {
@@ -661,6 +694,12 @@ useEffect(() => {
   if (sheets.reason) return;
   if (pipeline.phase === "generating") return;
   if (!session?.user?.id) return;
+  // The lock read settles before any agent run is armed: a locked trip never
+  // re-bills the analysis (the swipes are frozen, so the summary stays exactly
+  // as it was at lock time), and an unlocked trip is not held hostage to a
+  // read that has not landed yet.
+  if (!lockKnown) return;
+  if (locked) return;
   // One run per scope: a subsequent render, or StrictMode's double invoke,
   // sees the scope already recorded and does nothing.
   if (preferenceAnalysisScopeRef.current === handoffScope) return;
@@ -673,6 +712,8 @@ useEffect(() => {
   sheets.reason,
   pipeline.phase,
   session,
+  lockKnown,
+  locked,
   handoffScope,
   runPreferenceAnalysis,
 ]);
@@ -823,6 +864,15 @@ return (
               <button className="btn btn-primary" onClick={() => navigate("/plan")}>
                 View the group plan
               </button>
+              {summaryExists === true && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ marginTop: 8 }}
+                  onClick={() => navigate("/style", { state: { from: "swipe" } })}
+                >
+                  See my summary
+                </button>
+              )}
             </div>
           </div>
         ) : unswiped.length === 0 && !sheets.reason ? (
