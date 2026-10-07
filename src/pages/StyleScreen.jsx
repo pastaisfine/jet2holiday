@@ -29,6 +29,8 @@ import {
 const LISBON_FALLBACK = "Lisbon, Portugal";
 
 // The stored row speaks snake_case, the agent and this screen speak camelCase.
+// Kept next to the screen so both shapes of the same analysis are visible in
+// one place, and so a column added to the table has exactly one reader to update.
 function fromRow(row) {
   return {
     summary: {
@@ -60,6 +62,10 @@ export default function StyleScreen({ useAppState }) {
   const preferenceId = profile?.id || profile?.username || "guest";
   const preferences = preferenceProfiles?.[preferenceId];
 
+  // The profile can resolve after first paint. Deriving the hand-off per scope
+  // rather than capturing it in state means the scoped copy is read as soon as
+  // the traveller is known, and an empty analysis stands in until then -- never
+  // the previous traveller's summary. The helper owns the key and the shape.
   const handoff = useMemo(
     () =>
       readPreferenceHandoff({
@@ -70,18 +76,26 @@ export default function StyleScreen({ useAppState }) {
     [profile?.id, tripId, dest]
   );
 
+  // The evidence is tagged with the scope it was fetched for, so a scope change
+  // (account or destination) cannot let the previous scope's durable row mask
+  // the new scope's hand-off while the refetch is in flight.
   const evidenceScope = `${profile?.id || "guest"}::${tripId || ""}::${dest || LISBON_FALLBACK}`;
   const [storedEvidence, setStoredEvidence] = useState(null);
-  const [crewMembers, setCrewMembers] = useState([]); // 动态真实团员状态
-  
+  const [crewMembers, setCrewMembers] = useState([]);
+
   const evidence =
     storedEvidence?.scope === evidenceScope ? storedEvidence : null;
   const likedSwipes = useMemo(() => evidence?.rows || [], [evidence]);
   const stored = evidence?.row || null;
 
+  // The sessionStorage copy is what the swipe screen wrote on its way past: it
+  // is immediate but tab-scoped, and it is missing everything that arrived
+  // after the last analysis. The stored row is durable and is what the group
+  // planner reads, so it wins where both exist.
   const { summary, metadata } = stored ? fromRow(stored) : handoff;
 
-  // 加载真实 Swipe 数据、个人偏好摘要以及真实的 Trip 成员和他们的偏好
+  // Load the durable evidence for the signed-in traveller. Kept separate from
+  // the crew load so a failure here does not blank the crew card.
   useEffect(() => {
     let cancelled = false;
     const destination = dest || LISBON_FALLBACK;
@@ -89,32 +103,13 @@ export default function StyleScreen({ useAppState }) {
     Promise.all([
       getLikedSwipes({ tripId, destination }),
       getPreferenceSummary({ tripId, destination }),
-      tripId ? getTripMembers(tripId) : Promise.resolve([]),
-      tripId ? getTripPreferenceSummaries(tripId) : Promise.resolve([]),
     ])
-      .then(([rows, row, members, summaries]) => {
+      .then(([rows, row]) => {
         if (cancelled) return;
         setStoredEvidence({ scope: evidenceScope, rows, row });
-
-        // 将真实成员与他们的偏好摘要（style_name/tagline）结合起来动态生成 Crew
-        const summaryMap = {};
-        summaries.forEach((s) => {
-          summaryMap[s.user_id] = s.style_name || s.tagline || "Traveler";
-        });
-
-        const formattedCrew = members
-          .filter((m) => m.userId !== profile?.id) // 排除自己，只显示 "Everyone else in the crew"
-          .map((m) => ({
-            name: m.username,
-            label: summaryMap[m.userId] || "Curious Explorer",
-          }));
-
-        setCrewMembers(formattedCrew.length > 0 ? formattedCrew : [
-          { name: "Ben", label: "Slow-Morning Locavore" },
-          { name: "Priya", label: "Curious Culture Collector" },
-          { name: "Marcus", label: "Night-Optimist" }
-        ]); // 如果还没有其他人加入，保留默认 fallback 避免空白
       })
+      // A failed read costs the durable-evidence upgrade and nothing else: the
+      // sessionStorage copy and the prose fallback still render a full profile.
       .catch((error) => {
         console.error("Failed to load stored preference evidence:", error);
       });
@@ -122,8 +117,55 @@ export default function StyleScreen({ useAppState }) {
     return () => {
       cancelled = true;
     };
-  }, [profile?.id, tripId, dest, evidenceScope]);
+  }, [tripId, dest, evidenceScope]);
 
+  // Load the real crew and their preference labels. A failure here is logged
+  // and leaves the crew section empty; it does not affect the traveller's own
+  // profile.
+  useEffect(() => {
+    let cancelled = false;
+    if (!tripId) return;
+
+    getTripMembers(tripId)
+      .then((members) =>
+        getTripPreferenceSummaries(tripId).then((summaries) => {
+          if (cancelled) return;
+
+          const summaryMap = {};
+          summaries.forEach((s) => {
+            summaryMap[s.user_id] = s.style_name || s.tagline || "Still deciding";
+          });
+
+          const formattedCrew = members
+            .filter((m) => m.userId !== profile?.id)
+            .map((m) => ({
+              id: m.membershipId,
+              name: m.username,
+              label: summaryMap[m.userId] || "Still deciding",
+            }));
+
+          setCrewMembers(formattedCrew);
+        })
+      )
+      .catch((error) => {
+        console.error("Failed to load crew members:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, tripId]);
+
+  // Every planning constraint on the screen, resolved once.
+  //
+  // The traveller's own answer wins over the agent's inference for every field:
+  // they are the one who filled in the form, and an inference that contradicts
+  // it produces a screen showing the same row twice with two different values.
+  // The agent is the fallback for fields they left blank, which is the only
+  // place it has something to add.
+  //
+  // Both the identity card's chips and the preferences table read this, so the
+  // two cannot drift apart.
   const planning = useMemo(
     () => ({
       pace:
@@ -150,6 +192,10 @@ export default function StyleScreen({ useAppState }) {
     [summary, planning]
   );
 
+  // The agent's exact category tally when this analysis carries one, and the
+  // prose-derived approximation only for a summary written before the metadata
+  // hand-off. Both go through toInterestBars, so a category nobody liked is
+  // absent in either case rather than rendered as a 0% row.
   const tally = useMemo(
     () =>
       Array.isArray(metadata.categoryTally) && metadata.categoryTally.length > 0
@@ -158,11 +204,21 @@ export default function StyleScreen({ useAppState }) {
     [metadata.categoryTally, summary.interests]
   );
 
+  // Every category, not the default top four: the label above these bars is
+  // "Share of your likes", and a truncated set silently reads as a claim about
+  // all of them while the shares add up to less than 100%.
   const interestBreakdown = useMemo(
     () => toInterestBars(tally, { limit: CATEGORIES.length }),
     [tally]
   );
 
+  // Checked against the same tally the bars are drawn from, so the title and the
+  // bars cannot disagree -- see resolveStyleName.
+  //
+  // The agent's own name, not style.name: "Curious Explorer" is the neutral
+  // fallback this function also returns, and "curious" reads as a claim on
+  // culture, so passing the pre-defaulted name would have a traveller who never
+  // said anything renamed to their top category.
   const styleName = useMemo(
     () => resolveStyleName(summary.styleName, tally),
     [summary.styleName, tally]
@@ -187,7 +243,9 @@ export default function StyleScreen({ useAppState }) {
     [likedSwipes, tally]
   );
 
-  // 用动态获取到的真实 crewMembers 代替硬编码的 CREW
+  // Derive group insight from the real crew members instead of the hardcoded
+  // demo crew. A member whose label cannot be read into a category is skipped
+  // rather than guessed at -- see toGroupInsight.
   const groupInsight = useMemo(
     () => toGroupInsight(crewMembers, topCategoryFromTally(tally)),
     [crewMembers, tally]
@@ -284,10 +342,22 @@ export default function StyleScreen({ useAppState }) {
           </div>
         )}
 
+        {/*
+          The evidence behind the claim, folded away. It is here rather than on
+          the card because it is the part that is interesting once and
+          disposable after -- and because on a generated trip it can be thin, so
+          a collapsed section sets the right expectation before it is opened.
+        */}
         {(reasoning.length > 0 || dislikes.length > 0 || hasReasons) && (
           <details className="bento-card evidence-card">
             <summary className="section-title">Why we learned this</summary>
 
+            {/*
+              The traveller's own words, not the agent's paraphrase of them. The
+              reason chips are the differentiator this product has over a
+              category grid, so showing what was actually chosen is the one thing
+              here that a bare percentage cannot substitute for.
+            */}
             {hasReasons && (
               <>
                 {reasonHighlights.liked.length > 0 && (
@@ -376,13 +446,19 @@ export default function StyleScreen({ useAppState }) {
           <div className="section-title">Everyone else in the crew</div>
           <div className="crewlist">
             {crewMembers.map((member) => (
-              <div className="crewrow" key={member.name}>
+              <div className="crewrow" key={member.id}>
                 <span className="crewname">{member.name}</span>
                 <span className="crewtag">{member.label}</span>
               </div>
             ))}
           </div>
 
+          {/*
+            Only rendered when there is something true to say. The previous
+            hardcoded line asserted a nature-versus-nightlife conflict on every
+            load, so a traveller whose own bars said food sat directly under a
+            sentence claiming they wanted nature.
+          */}
           {groupInsight && groupInsight.tradeoffs.length > 0 && (
             <div className="groupinsight">
               {groupInsight.agrees.length > 0 && (
