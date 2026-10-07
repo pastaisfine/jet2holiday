@@ -7,7 +7,9 @@ import {
   getLikedSwipes,
   getPreferenceSummary,
   readPreferenceHandoff,
+  getTripPreferenceSummaries,
 } from "../services/preference";
+import { getTripMembers } from "../services/tripService";
 import {
   CATEGORIES,
   toInterestBars,
@@ -25,15 +27,6 @@ import {
 } from "../lib/preferenceProfile";
 
 const LISBON_FALLBACK = "Lisbon, Portugal";
-
-// The three demo crew. Names and labels are fixtures; everything said *about*
-// them is derived, so a label that cannot be read into a category is skipped
-// rather than guessed at. See toGroupInsight.
-const CREW = [
-  { name: "Ben", label: "Slow-Morning Locavore" },
-  { name: "Priya", label: "Curious Culture Collector" },
-  { name: "Marcus", label: "Night-Optimist" },
-];
 
 // The stored row speaks snake_case, the agent and this screen speak camelCase.
 // Kept next to the screen so both shapes of the same analysis are visible in
@@ -82,11 +75,14 @@ export default function StyleScreen({ useAppState }) {
       }) || { summary: {}, metadata: {} },
     [profile?.id, tripId, dest]
   );
+
   // The evidence is tagged with the scope it was fetched for, so a scope change
   // (account or destination) cannot let the previous scope's durable row mask
   // the new scope's hand-off while the refetch is in flight.
   const evidenceScope = `${profile?.id || "guest"}::${tripId || ""}::${dest || LISBON_FALLBACK}`;
   const [storedEvidence, setStoredEvidence] = useState(null);
+  const [crewMembers, setCrewMembers] = useState([]);
+
   const evidence =
     storedEvidence?.scope === evidenceScope ? storedEvidence : null;
   const likedSwipes = useMemo(() => evidence?.rows || [], [evidence]);
@@ -98,6 +94,8 @@ export default function StyleScreen({ useAppState }) {
   // planner reads, so it wins where both exist.
   const { summary, metadata } = stored ? fromRow(stored) : handoff;
 
+  // Load the durable evidence for the signed-in traveller. Kept separate from
+  // the crew load so a failure here does not blank the crew card.
   useEffect(() => {
     let cancelled = false;
     const destination = dest || LISBON_FALLBACK;
@@ -119,7 +117,44 @@ export default function StyleScreen({ useAppState }) {
     return () => {
       cancelled = true;
     };
-  }, [profile?.id, tripId, dest, evidenceScope]);
+  }, [tripId, dest, evidenceScope]);
+
+  // Load the real crew and their preference labels. A failure here is logged
+  // and leaves the crew section empty; it does not affect the traveller's own
+  // profile.
+  useEffect(() => {
+    let cancelled = false;
+    if (!tripId) return;
+
+    getTripMembers(tripId)
+      .then((members) =>
+        getTripPreferenceSummaries(tripId).then((summaries) => {
+          if (cancelled) return;
+
+          const summaryMap = {};
+          summaries.forEach((s) => {
+            summaryMap[s.user_id] = s.style_name || s.tagline || "Still deciding";
+          });
+
+          const formattedCrew = members
+            .filter((m) => m.userId !== profile?.id)
+            .map((m) => ({
+              id: m.membershipId,
+              name: m.username,
+              label: summaryMap[m.userId] || "Still deciding",
+            }));
+
+          setCrewMembers(formattedCrew);
+        })
+      )
+      .catch((error) => {
+        console.error("Failed to load crew members:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, tripId]);
 
   // Every planning constraint on the screen, resolved once.
   //
@@ -208,9 +243,12 @@ export default function StyleScreen({ useAppState }) {
     [likedSwipes, tally]
   );
 
+  // Derive group insight from the real crew members instead of the hardcoded
+  // demo crew. A member whose label cannot be read into a category is skipped
+  // rather than guessed at -- see toGroupInsight.
   const groupInsight = useMemo(
-    () => toGroupInsight(CREW, topCategoryFromTally(tally)),
-    [tally]
+    () => toGroupInsight(crewMembers, topCategoryFromTally(tally)),
+    [crewMembers, tally]
   );
 
   useEffect(() => {
@@ -407,8 +445,8 @@ export default function StyleScreen({ useAppState }) {
         <div className="bento-card">
           <div className="section-title">Everyone else in the crew</div>
           <div className="crewlist">
-            {CREW.map((member) => (
-              <div className="crewrow" key={member.name}>
+            {crewMembers.map((member) => (
+              <div className="crewrow" key={member.id}>
                 <span className="crewname">{member.name}</span>
                 <span className="crewtag">{member.label}</span>
               </div>
