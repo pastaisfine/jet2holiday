@@ -252,11 +252,9 @@ export function useAppState() {
   }, []);
 
   const startNewTrip = useCallback(() => {
-    
   setState((prev) => {
     // Save the current trip before starting a new one.
     if (prev.tripId) {
-      flushSave();
       localStorage.setItem(
         getTripStorageKey(prev.tripId),
         JSON.stringify(prev)

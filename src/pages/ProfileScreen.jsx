@@ -5,6 +5,17 @@ import { supabase } from "../lib/supabase";
 import { resetPipeline } from "../services/generateTrip";
 import { getUserTrips } from "../services/tripService";
 
+// Shared scrim for the profile screen's confirm modals (start over, leave trip).
+const MODAL_OVERLAY = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 60,
+  background: "rgba(0,0,0,0.45)",
+  display: "grid",
+  placeItems: "center",
+  padding: 20,
+};
+
 function ProfileDetailsForm({ profile, updateProfile }) {
   const [usernameInput, setUsernameInput] = useState(profile?.username || "");
   const [avatarUrlInput, setAvatarUrlInput] = useState(profile?.avatarUrl || "");
@@ -59,15 +70,16 @@ export default function ProfileScreen({ useAppState }) {
   const [tripsError, setTripsError] = useState("");
 
   useEffect(() => {
-    if (!user?.id) {
-      setUserTrips([]);
-      return;
-    }
+    // No session: the signed-out view renders instead of the trip list, so
+    // there is nothing to reset synchronously here -- doing so is exactly the
+    // cascading render react(set-state-in-effect) warns about.
+    if (!user?.id) return;
 
     let cancelled = false;
 
     const fetchTrips = async () => {
       setLoadingTrips(true);
+      setUserTrips([]);
       setTripsError("");
 
       try {
@@ -105,6 +117,9 @@ export default function ProfileScreen({ useAppState }) {
   const [startOverOpen, setStartOverOpen] = useState(false);
   const [startOverBusy, setStartOverBusy] = useState(false);
 
+  // Leave state: exit the active trip back to the picker, delete nothing.
+  const [leaveOpen, setLeaveOpen] = useState(false);
+
   const handleCreateNewTrip = () => {
   // Clear the current trip's local state without deleting Supabase records.
   startNewTrip();
@@ -136,6 +151,17 @@ export default function ProfileScreen({ useAppState }) {
       setStartOverOpen(false);
       navigate("/setup/step1");
     }
+  };
+
+  // Leave clears this device's active trip only -- membership, swipes and the
+  // trip itself all stay on the server. The trip list below is the picker the
+  // user lands on: Switch restores any trip's saved progress, Create New Trip
+  // starts fresh.
+  const handleLeaveTrip = () => {
+    resetPipeline();
+    resetTrip?.();
+    setLeaveOpen(false);
+    navigate("/profile");
   };
 
   const handleUpdatePassword = async (e) => {
@@ -408,45 +434,34 @@ export default function ProfileScreen({ useAppState }) {
 
 
             {trip.id === tripId ? (
-              <span
-                className="chip sel"
-                style={{ background: "var(--surface)", color: "var(--fg)" }}
-              >
-                Current
-              </span>
-            ) : (
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="btn btn-xs btn-secondary"
-                  onClick={() => {
-                    loadTrip(trip);
-                    resetPipeline();
-                    navigate("/hub");
-                  }}
+                <span
+                  className="chip sel"
+                  style={{ background: "var(--surface)", color: "var(--fg)" }}
                 >
-                  Switch
-                </button>
-
+                  Current
+                </span>
                 <button
                   type="button"
                   className="btn btn-xs btn-secondary"
                   style={{ color: "var(--nom)" }}
-                  onClick={() => {
-                    const confirmed = window.confirm(
-                      `Leave ${trip.destination || "this trip"}?`
-                    );
-
-                    if (confirmed) {
-                      window.alert(
-                        "Leave Trip is not available yet. No data has been removed."
-                      );
-                    }
-                  }}
+                  onClick={() => setLeaveOpen(true)}
                 >
                   Leave
                 </button>
               </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-xs btn-secondary"
+                onClick={() => {
+                  loadTrip(trip);
+                  resetPipeline();
+                  navigate("/hub");
+                }}
+              >
+                Switch
+              </button>
             )}
             </div>
           ))}
@@ -492,15 +507,7 @@ export default function ProfileScreen({ useAppState }) {
         <div
           role="dialog"
           aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 60,
-            background: "rgba(0,0,0,0.45)",
-            display: "grid",
-            placeItems: "center",
-            padding: 20,
-          }}
+          style={MODAL_OVERLAY}
           onClick={() => !startOverBusy && setStartOverOpen(false)}
         >
           <div
@@ -535,6 +542,45 @@ export default function ProfileScreen({ useAppState }) {
                 className="btn btn-block"
                 disabled={startOverBusy}
                 onClick={() => setStartOverOpen(false)}
+                style={{ background: "none", border: "none", color: "var(--muted)", minHeight: 36, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Leave trip: local exit only -- membership and swipes stay on the server */}
+      {leaveOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={MODAL_OVERLAY}
+          onClick={() => setLeaveOpen(false)}
+        >
+          <div
+            className="bento-card"
+            style={{ padding: 20, maxWidth: 340, width: "100%", background: "var(--surface)" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 6px", fontSize: 17 }}>Leave this trip?</h3>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+              You'll return to the trip menu, where you can switch to another trip or create a new one.
+              Nothing is deleted — you stay a member, and your progress is saved for when you come back.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-block"
+                onClick={handleLeaveTrip}
+                style={{ background: "var(--nom)", color: "var(--surface)", border: "none", borderRadius: 12, minHeight: 44, fontWeight: 700, cursor: "pointer" }}
+              >
+                Leave trip
+              </button>
+              <button
+                type="button"
+                className="btn btn-block"
+                onClick={() => setLeaveOpen(false)}
                 style={{ background: "none", border: "none", color: "var(--muted)", minHeight: 36, cursor: "pointer" }}
               >
                 Cancel

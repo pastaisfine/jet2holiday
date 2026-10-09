@@ -11,21 +11,6 @@ export default function JoinScreen({ useAppState }) {
   const { session, loading: authLoading } = useAuth();
   const { loadTrip, updateTrip } = useAppState;
 
-  // Read through refs inside the join effect: subscribing to these values would
-  // re-run the effect on every state write, and each run writes state.
-  //const addedCardsRef = useRef(addedCards);
-  //useEffect(() => {
-   // addedCardsRef.current = addedCards;
-  //}, [addedCards]);
-  //const pipelineCompletedRef = useRef(pipelineCompleted);
- // useEffect(() => {
-  //  pipelineCompletedRef.current = pipelineCompleted;
-  //}, [pipelineCompleted]);
- // const cardsDeckIdRef = useRef(cardsDeckId);
- // useEffect(() => {
- //   cardsDeckIdRef.current = cardsDeckId;
- // }, [cardsDeckId]);
-
   const [trip, setTrip] = useState(null);
   const [hostName, setHostName] = useState("");
   const [loadingTrip, setLoadingTrip] = useState(true);
