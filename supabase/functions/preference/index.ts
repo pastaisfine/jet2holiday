@@ -53,6 +53,21 @@ type PreferenceSummary = {
   reasoningInsights: string[];
 };
 
+// Same cleanup as group-planner's stripJsonFence: the model occasionally wraps
+// the JSON in a markdown fence or adds a preamble despite responseMimeType, so
+// clean the text before parsing rather than failing the whole call on it.
+function stripJsonFence(raw: string): string {
+  let cleaned = raw.replace(/^```(?:json)?|```$/g, "").trim();
+  if (!cleaned.startsWith("{") && !cleaned.startsWith("[")) {
+    const objStart = cleaned.indexOf("{");
+    const arrStart = cleaned.indexOf("[");
+    const start = objStart >= 0 && (arrStart < 0 || objStart < arrStart) ? objStart : arrStart;
+    const end = start >= 0 && cleaned[start] === "{" ? cleaned.lastIndexOf("}") : cleaned.lastIndexOf("]");
+    if (start >= 0 && end > start) cleaned = cleaned.slice(start, end + 1);
+  }
+  return cleaned;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
@@ -324,7 +339,9 @@ Analyse this traveller's preferences and return the required JSON object.
       ],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 2048,
+        // 2048 was truncating longer summaries mid-JSON, which is unparseable
+        // no matter how well the text is cleaned. Matches the other agents.
+        maxOutputTokens: 4096,
         responseMimeType: "application/json",
       },
     };
@@ -360,6 +377,11 @@ Analyse this traveller's preferences and return the required JSON object.
 
     const perModel: string[] = [];
     let geminiData: any = null;
+    // A response only counts as a success once its text parses as a JSON
+    // object. The old code accepted any non-empty text here and parsed after
+    // the loop, so a fenced or truncated response from the first model 502'd
+    // immediately and the four fallback models were never tried.
+    let parsedSummary: Partial<PreferenceSummary> | null = null;
     let lastErrBody = "";
 
     for (const model of GEMINI_MODELS) {
@@ -378,15 +400,38 @@ Analyse this traveller's preferences and return the required JSON object.
           );
 
           if (geminiRes.ok) {
-            geminiData = await geminiRes.json();
+            const data = await geminiRes.json();
             const text =
-              geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-            if (text.trim().length > 0) {
-              perModel.push(`${model}: ok`);
-              console.log(`[Preference Agent] Analysed via ${model}`);
-              break;
+              data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+            if (text.trim().length === 0) {
+              lastStatus = "returned an empty response";
+              continue;
             }
-            lastStatus = "returned an empty response";
+
+            try {
+              const candidate: unknown = JSON.parse(stripJsonFence(text));
+              if (
+                candidate === null ||
+                typeof candidate !== "object" ||
+                Array.isArray(candidate)
+              ) {
+                throw new Error("response is not a JSON object");
+              }
+              parsedSummary = candidate as Partial<PreferenceSummary>;
+            } catch {
+              lastStatus = "returned unparseable JSON";
+              console.warn(
+                `[Preference Agent] ${model} attempt ${attempt}: ` +
+                  `response did not parse as JSON (${text.length} chars)`
+              );
+              continue;
+            }
+
+            geminiData = data;
+            perModel.push(`${model}: ok`);
+            console.log(`[Preference Agent] Analysed via ${model}`);
+            break;
           } else {
             lastErrBody = await geminiRes.text();
             console.error(
@@ -430,7 +475,7 @@ Analyse this traveller's preferences and return the required JSON object.
       );
     }
 
-    if (!geminiData) {
+    if (!geminiData || !parsedSummary) {
       return new Response(
         JSON.stringify({
           error:
@@ -445,40 +490,7 @@ Analyse this traveller's preferences and return the required JSON object.
       );
     }
 
-    // ------------------------------------------------------------
-    // Parse Gemini response
-    // ------------------------------------------------------------
-
-    const rawText =
-      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-    if (!rawText) {
-      return new Response(
-        JSON.stringify({
-          error: "Gemini returned no preference analysis.",
-        }),
-        {
-          status: 502,
-          headers,
-        }
-      );
-    }
-
-    let parsed: Partial<PreferenceSummary>;
-
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      return new Response(
-        JSON.stringify({
-          error: "Gemini returned invalid JSON.",
-        }),
-        {
-          status: 502,
-          headers,
-        }
-      );
-    }
+    const parsed: Partial<PreferenceSummary> = parsedSummary;
 
     const toStringArray = (value: unknown): string[] => {
       if (!Array.isArray(value)) return [];
