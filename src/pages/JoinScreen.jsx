@@ -9,27 +9,28 @@ export default function JoinScreen({ useAppState }) {
   const { tripId } = useParams();
   const navigate = useNavigate();
   const { session, loading: authLoading } = useAuth();
-  const { loadTrip, update, addedCards, pipelineCompleted, cardsDeckId } = useAppState;
+  const { loadTrip, updateTrip } = useAppState;
 
   // Read through refs inside the join effect: subscribing to these values would
   // re-run the effect on every state write, and each run writes state.
-  const addedCardsRef = useRef(addedCards);
-  useEffect(() => {
-    addedCardsRef.current = addedCards;
-  }, [addedCards]);
-  const pipelineCompletedRef = useRef(pipelineCompleted);
-  useEffect(() => {
-    pipelineCompletedRef.current = pipelineCompleted;
-  }, [pipelineCompleted]);
-  const cardsDeckIdRef = useRef(cardsDeckId);
-  useEffect(() => {
-    cardsDeckIdRef.current = cardsDeckId;
-  }, [cardsDeckId]);
+  //const addedCardsRef = useRef(addedCards);
+  //useEffect(() => {
+   // addedCardsRef.current = addedCards;
+  //}, [addedCards]);
+  //const pipelineCompletedRef = useRef(pipelineCompleted);
+ // useEffect(() => {
+  //  pipelineCompletedRef.current = pipelineCompleted;
+  //}, [pipelineCompleted]);
+ // const cardsDeckIdRef = useRef(cardsDeckId);
+ // useEffect(() => {
+ //   cardsDeckIdRef.current = cardsDeckId;
+ // }, [cardsDeckId]);
 
   const [trip, setTrip] = useState(null);
   const [hostName, setHostName] = useState("");
   const [loadingTrip, setLoadingTrip] = useState(true);
   const [joining, setJoining] = useState(false);
+  const joiningTripRef = useRef(null);
   const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
 
@@ -56,6 +57,12 @@ export default function JoinScreen({ useAppState }) {
   // If already logged in, auto-join and route appropriately
   useEffect(() => {
     if (authLoading || loadingTrip || !trip || !session?.user?.id) return;
+
+    // Prevent duplicate joins for the same trip and user.
+    const joinKey = `${tripId}:${session.user.id}`;
+
+    if (joiningTripRef.current === joinKey) return;
+    joiningTripRef.current = joinKey;
 
     const doJoin = async () => {
       setJoining(true);
@@ -85,20 +92,28 @@ export default function JoinScreen({ useAppState }) {
           // Already swiped. Same deck: merge, so user-added places on this
           // device survive. Different deck (another trip, or none recorded):
           // replace, so a previous trip's cards cannot linger in this one.
-          const sameDeck = Boolean(deckId) && cardsDeckIdRef.current === deckId;
-          const knownIds = new Set((addedCardsRef.current || []).map((card) => card.id));
-          const nextCards = sameDeck
-            ? [
-              ...(addedCardsRef.current || []),
-              ...sharedCards.filter((card) => !knownIds.has(card.id)),
-            ]
-            : sharedCards;
+          updateTrip(tripId, (currentTrip) => {
+            const sameDeck = Boolean(deckId) && currentTrip.cardsDeckId === deckId;
 
-          update({
-            addedCards: nextCards,
-            cardsDeckId: deckId || null,
-            pipelineCompleted: sharedCards.length > 0 || pipelineCompletedRef.current,
-            pipelineDest: effectiveTrip?.destination || "Lisbon, Portugal",
+            const existingCards = sameDeck
+              ? currentTrip.addedCards || []
+              : [];
+
+            const knownIds = new Set(existingCards.map((card) => card.id));
+
+            const nextCards = sameDeck
+              ? [
+                  ...existingCards,
+                  ...sharedCards.filter((card) => !knownIds.has(card.id)),
+                ]
+              : sharedCards;
+
+            return {
+              addedCards: nextCards,
+              cardsDeckId: deckId || null,
+              pipelineCompleted: sharedCards.length > 0 || currentTrip.pipelineCompleted,
+              pipelineDest: effectiveTrip?.destination || "Lisbon, Portugal",
+            };
           });
 
           navigate("/hub");
@@ -106,7 +121,7 @@ export default function JoinScreen({ useAppState }) {
         }
 
         // Reset swipe progress so the new member starts fresh with the workspace's shared card deck
-        update({
+        updateTrip(tripId, {
           idx: 0,
           likes: 0,
           skips: 0,
@@ -138,12 +153,15 @@ export default function JoinScreen({ useAppState }) {
       } catch (err) {
         setError(err.message || "Failed to join trip.");
         setJoining(false);
+        // Allow the join flow to retry after a failure.
+        if (joiningTripRef.current === joinKey) {
+          joiningTripRef.current = null;
+        }
       }
     };
 
     doJoin();
-  }, [authLoading, loadingTrip, trip, session, tripId, loadTrip, update, navigate]);
-
+  }, [authLoading, loadingTrip, trip, session, tripId, loadTrip, updateTrip, navigate]);
   const dateRange = trip ? fmtDateRange(trip.start_date, trip.end_date) : "";
 
   if (loadingTrip || authLoading) {

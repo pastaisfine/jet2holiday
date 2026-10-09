@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { supabase } from "../lib/supabase";
 import { resetPipeline } from "../services/generateTrip";
+import { getUserTrips } from "../services/tripService";
 
 function ProfileDetailsForm({ profile, updateProfile }) {
   const [usernameInput, setUsernameInput] = useState(profile?.username || "");
@@ -42,7 +43,56 @@ function ProfileDetailsForm({ profile, updateProfile }) {
 export default function ProfileScreen({ useAppState }) {
   const navigate = useNavigate();
   const { user, profile, signOut, updateProfile, updatePassword } = useAuth();
-  const { likes = 0, skips = 0, reasonCount = 0, styleName, resetTrip, pipelineDest } = useAppState || {};
+  const {
+  likes = 0,
+  skips = 0,
+  reasonCount = 0,
+  styleName,
+  resetTrip,
+  startNewTrip,
+  loadTrip,
+  tripId,
+  pipelineDest,
+  } = useAppState || {};
+  const [userTrips, setUserTrips] = useState([]);
+  const [loadingTrips, setLoadingTrips] = useState(false);
+  const [tripsError, setTripsError] = useState("");
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUserTrips([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchTrips = async () => {
+      setLoadingTrips(true);
+      setTripsError("");
+
+      try {
+        const trips = await getUserTrips(user.id);
+
+        if (!cancelled) {
+          setUserTrips(trips);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setTripsError(error.message || "Failed to load trips.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingTrips(false);
+        }
+      }
+    };
+
+    fetchTrips();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false);
@@ -55,6 +105,16 @@ export default function ProfileScreen({ useAppState }) {
   const [startOverOpen, setStartOverOpen] = useState(false);
   const [startOverBusy, setStartOverBusy] = useState(false);
 
+  const handleCreateNewTrip = () => {
+  // Clear the current trip's local state without deleting Supabase records.
+  startNewTrip();
+
+  // Reset the previous trip's generation pipeline.
+  resetPipeline();
+
+  // Open the existing trip setup flow.
+  navigate("/setup/step1");
+  };
   const handleResetTripOnly = () => {
     resetPipeline();
     resetTrip?.();
@@ -299,20 +359,120 @@ export default function ProfileScreen({ useAppState }) {
           </div>
         </div>
 
-        {/* Start Over (Q19/Q25) */}
-        <div className="bento-card" style={{ padding: "var(--card-pad)" }}>
-          <div className="bx-title">Trip</div>
-          <div className="bx-sub" style={{ marginTop: 2, marginBottom: 12 }}>
-            {pipelineDest ? `Current trip: ${pipelineDest}` : "Start fresh with a new destination."}
-          </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-block"
-            onClick={() => setStartOverOpen(true)}
-          >
-            Start over
-          </button>
+      {/* Start Over (Q19/Q25) */}
+      <div className="bento-card" style={{ padding: "var(--card-pad)" }}>
+        <div className="bx-title">Trip</div>
+        <div className="bx-sub" style={{ marginTop: 2, marginBottom: 12 }}>
+          {pipelineDest ? `Current trip: ${pipelineDest}` : "Start fresh with a new destination."}
         </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <div className="bx-title" style={{ fontSize: 14, marginBottom: 10 }}>
+            My Trips
+          </div>
+
+          {loadingTrips && <p>Loading trips...</p>}
+
+          {tripsError && (
+            <p style={{ color: "var(--nom)" }}>{tripsError}</p>
+          )}
+
+          {!loadingTrips && !tripsError && userTrips.length === 0 && (
+            <p style={{ color: "var(--muted)", fontSize: 13 }}>
+              No trips yet. Create your first trip!
+            </p>
+          )}
+
+          {!loadingTrips && userTrips.map((trip) => (
+            <div
+              key={trip.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+                padding: 12,
+                marginBottom: 8,
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600 }}>
+                  {trip.destination || "Untitled Trip"}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                  {trip.id === tripId ? "Current trip" : "Saved trip"}
+                </div>
+              </div>
+
+
+            {trip.id === tripId ? (
+              <span
+                className="chip sel"
+                style={{ background: "var(--surface)", color: "var(--fg)" }}
+              >
+                Current
+              </span>
+            ) : (
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="btn btn-xs btn-secondary"
+                  onClick={() => {
+                    loadTrip(trip);
+                    resetPipeline();
+                    navigate("/hub");
+                  }}
+                >
+                  Switch
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-xs btn-secondary"
+                  style={{ color: "var(--nom)" }}
+                  onClick={() => {
+                    const confirmed = window.confirm(
+                      `Leave ${trip.destination || "this trip"}?`
+                    );
+
+                    if (confirmed) {
+                      window.alert(
+                        "Leave Trip is not available yet. No data has been removed."
+                      );
+                    }
+                  }}
+                >
+                  Leave
+                </button>
+              </div>
+            )}
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-block"
+          onClick={handleCreateNewTrip}
+          style={{
+            marginBottom: 8,
+            background: "var(--fg)",
+            color: "var(--surface)",
+          }}
+        >
+          Create New Trip
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-secondary btn-block"
+          onClick={() => setStartOverOpen(true)}
+        >
+          Start over
+        </button>
+      </div>
 
         {/* Sign Out Button */}
         <div style={{ padding: "4px 0 20px" }}>

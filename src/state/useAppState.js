@@ -4,6 +4,9 @@ import { TASKS } from "../data/tasks";
 
 const LS_KEY = "tripder-state-v1";
 
+// Give each trip its own localStorage key.
+const getTripStorageKey = (tripId) => `tripder-trip-${tripId}`;
+
 const DEFAULT_STATE = {
   idx: 0,
   likes: 0,
@@ -65,11 +68,22 @@ function flushSave() {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
+
   if (!pendingSave) return;
+
   const state = pendingSave;
   pendingSave = null;
+
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    const serialized = JSON.stringify(state);
+
+    // Keep the active trip state for normal app loading.
+    localStorage.setItem(LS_KEY, serialized);
+
+    // Save a separate copy for this trip, if it has an ID.
+    if (state.tripId) {
+      localStorage.setItem(getTripStorageKey(state.tripId), serialized);
+    }
   } catch {}
 }
 
@@ -94,6 +108,18 @@ export function useAppState() {
       const next = { ...prev, ...patch };
       save(next);
       return next;
+    });
+  }, []);
+  const updateTrip = useCallback((tripId, patch) => {
+  setState((prev) => {
+    if (prev.tripId !== tripId) return prev;
+
+    const changes =
+      typeof patch === "function" ? patch(prev) : patch;
+
+    const next = { ...prev, ...changes };
+    save(next);
+    return next;
     });
   }, []);
 
@@ -225,6 +251,31 @@ export function useAppState() {
     });
   }, []);
 
+  const startNewTrip = useCallback(() => {
+    
+  setState((prev) => {
+    // Save the current trip before starting a new one.
+    if (prev.tripId) {
+      flushSave();
+      localStorage.setItem(
+        getTripStorageKey(prev.tripId),
+        JSON.stringify(prev)
+      );
+    }
+    // Start a fresh trip without reusing the previous trip ID.
+    const next = {
+      ...DEFAULT_STATE,
+
+      // Keep the user's saved preference profiles.
+      preferenceProfiles: prev.preferenceProfiles,
+    };
+
+    // Save the new trip setup state to localStorage.
+    save(next);
+    return next;
+  });
+  }, []);
+
   const savePreferenceProfile = useCallback((profileId, preferences) => {
     setState((prev) => {
       const next = { ...prev, preferenceProfiles: { ...prev.preferenceProfiles, [profileId]: preferences } };
@@ -243,16 +294,57 @@ export function useAppState() {
 
   const loadTrip = useCallback((trip) => {
     if (!trip) return;
+
     setState((prev) => {
+    // Finish any pending save before switching trips.
+    flushSave();
+
+    // Already on this trip: keep the current state.
+    if (prev.tripId === trip.id) {
       const next = {
         ...prev,
-        tripId: trip.id,
         dest: trip.destination || prev.dest,
         startDate: trip.start_date || prev.startDate,
         endDate: trip.end_date || prev.endDate,
       };
+
       save(next);
       return next;
+    }
+
+    // Preserve the current trip's local state.
+    if (prev.tripId && prev.tripId !== trip.id) {
+      localStorage.setItem(
+        getTripStorageKey(prev.tripId),
+        JSON.stringify(prev)
+      );
+    }
+
+    // Restore the selected trip's previously saved state.
+    let savedTrip = null;
+
+    try {
+      const raw = localStorage.getItem(
+        getTripStorageKey(trip.id)
+      );
+
+      if (raw) {
+        savedTrip = JSON.parse(raw);
+      }
+    } catch {}
+
+    const next = {
+      ...DEFAULT_STATE,
+      ...(savedTrip || {}),
+      preferenceProfiles: prev.preferenceProfiles,
+      tripId: trip.id,
+      dest: trip.destination || savedTrip?.dest || "",
+      startDate: trip.start_date || savedTrip?.startDate || null,
+      endDate: trip.end_date || savedTrip?.endDate || null,
+    };
+
+    save(next);
+    return next;
     });
   }, []);
 
@@ -321,6 +413,7 @@ export function useAppState() {
     finished,
     reasonCount,
     update,
+    updateTrip,
     swipeCard,
     saveReason,
     selectHotel,
@@ -335,6 +428,7 @@ export function useAppState() {
     appendGeneratedCards,
     markPipelineCompleted,
     resetTrip,
+    startNewTrip, 
     savePreferenceProfile,
     setTripId,
     loadTrip,

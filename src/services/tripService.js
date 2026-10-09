@@ -107,6 +107,28 @@ export async function updateTripCards(tripId, cards) {
 }
 
 /**
+ * Fetches all trips that a user belongs to, newest joined first.
+ */
+export async function getUserTrips(userId) {
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from("trip_members")
+    .select("trip_id, joined_at, trips(*)")
+    .eq("user_id", userId)
+    .order("joined_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching user trips:", error.message);
+    throw error;
+  }
+
+  return (data || [])
+    .map((member) => member.trips)
+    .filter(Boolean);
+}
+
+/**
  * Fetches the user's latest trip from Supabase.
  */
 export async function getUserLatestTrip(userId) {
