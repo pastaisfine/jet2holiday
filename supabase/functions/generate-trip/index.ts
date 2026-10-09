@@ -110,12 +110,31 @@ const SERP_CONCURRENCY = 4;
 const SERP_TIMEOUT_MS = 12_000;
 const SERP_429_BACKOFF_MS = 1_500;
 
-// Upper bound on the whole enrichment phase. SerpApi stays slow, becomes slow
-// for everyone, or starts failing: we ship the photo-verified places we got
-// rather than leaving the client on a skeleton until it gives up. Anything
-// still running past this is dropped, but what already landed stays in the
-// table, so the deck is shorter rather than missing.
-const ENRICH_DEADLINE_MS = 25_000;
+/**
+ * Wall clock ceiling for this worker. Supabase terminates an Edge Function at
+ * 150s on the free plan and 400s on paid, and a worker killed mid-run skips the
+ * terminal `status: ready` write — which strands the deck as "generating" for
+ * everyone watching it, not just this caller.
+ *
+ * Enrichment is budgeted from whatever is left of this rather than from a fixed
+ * 25s. A 25s cap was sized for a 19-card deck; a 6-day trip asks for 25 and a
+ * fortnight asks for 57, and at ~1 card/second (four concurrent searches, 2-6s
+ * each) anything past roughly five days silently lost cards to the deadline.
+ */
+const WALL_CLOCK_BUDGET_MS = Number(Deno.env.get("GENERATE_TRIP_WALL_CLOCK_MS") || 150_000);
+
+/** Held back for the terminal deck write, the photo upgrades and the response. */
+const WALL_CLOCK_MARGIN_MS = 10_000;
+
+/**
+ * What is left of the wall clock budget once the LLM call has been paid for.
+ * The floor keeps a slow-arriving request from leaving no budget at all, which
+ * would drop every location and fail the deck outright.
+ */
+function enrichmentBudgetMs(requestStartedAt: number): number {
+  const elapsed = Date.now() - requestStartedAt;
+  return Math.max(5_000, WALL_CLOCK_BUDGET_MS - WALL_CLOCK_MARGIN_MS - elapsed);
+}
 
 // Gemini has no client-imposed deadline of its own, so a hung request would
 // otherwise hold the claim open indefinitely.
@@ -413,6 +432,11 @@ function resolveSecretKey(): string | null {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  // Captured per request, not at module scope: a Deno isolate serves more than
+  // one request, so a module-level start time would charge every later request
+  // for the first one's wall clock.
+  const requestStartedAt = Date.now();
 
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   const SERP_API_KEY = Deno.env.get("SERP_API_KEY");
@@ -788,7 +812,7 @@ Return the JSON array of locations now:`;
     await admin.updateDeck(deckId, { location_count: locations.length });
     console.log(`[generate-trip] Enriching ${locations.length} locations for "${destination}"`);
 
-    const deadline = Date.now() + ENRICH_DEADLINE_MS;
+    const deadline = Date.now() + enrichmentBudgetMs(requestStartedAt);
 
     const searchSerp = async (q: string): Promise<any | null> => {
       const params = new URLSearchParams({
@@ -890,7 +914,10 @@ Return the JSON array of locations now:`;
 
     await runPool(locations, SERP_CONCURRENCY, async (loc, index) => {
       if (Date.now() >= deadline) {
-        console.log(`[generate-trip] Enrichment deadline reached, skipping "${loc.name}"`);
+        console.log(
+          `[generate-trip] Wall clock budget exhausted after ` +
+            `${Date.now() - requestStartedAt}ms, skipping "${loc.name}"`
+        );
         return null;
       }
 
