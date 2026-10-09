@@ -18,7 +18,72 @@ const CATEGORY_TO_STYLE: Record<string, string> = {
 const CATEGORIES = Object.keys(CATEGORY_TO_STYLE);
 
 const PHOTO_BUCKET = "trip-photos";
-const MAX_CARDS = 19;
+
+/**
+ * How many swipe cards a trip of a given length should produce.
+ *
+ * The deck is sized from trip length because a swiper's effort should scale
+ * with the trip they are planning: one day is a short list, a week is a real
+ * decision. Before this the count came from the model's own guess at how big
+ * the destination is, which meant a 2-day and a 12-day trip to the same city
+ * got the same deck.
+ *
+ * Mirrored in src/lib/cardTargets.js. The deploy bundles this directory alone,
+ * so it cannot import from `src/`; the two must agree byte for byte and
+ * src/lib/cardTargets.test.js fails when they drift.
+ */
+const CARD_TARGETS: Record<number, number> = { 1: 4, 2: 7, 3: 10, 4: 15, 5: 19, 6: 25 };
+
+/** Past the literal table the count grows linearly, four cards per extra day. */
+const LONG_TRIP_ANCHOR_DAYS = 6;
+const LONG_TRIP_SLOPE = 4;
+
+/**
+ * The model keeps its judgement: it is told the target and may return more or
+ * fewer depending on what the destination actually offers. This ceiling only
+ * stops a generous model returning something we would spend minutes enriching.
+ */
+const CARD_CAP_MULTIPLIER = 1.5;
+
+/**
+ * Days a trip lasts when no dates were captured. Dates are optional, so the
+ * client skips generation entirely without them and shows the fallback deck; this
+ * covers legacy trips saved before dates were captured, where a sensible size
+ * beats refusing to generate.
+ */
+const DEFAULT_TRIP_DAYS = 3;
+
+/**
+ * Coerces anything the request might hold to a day count.
+ *
+ * Absence and nonsense both fall back to the default rather than to 1 day:
+ * `Number(null)` and `Number("")` are both 0, which would otherwise read as a
+ * deliberate one-day trip and quietly shrink the deck to four cards.
+ */
+function normaliseDays(days: unknown): number {
+  if (days == null || days === "") return DEFAULT_TRIP_DAYS;
+  const n = Number(days);
+  if (!Number.isFinite(n)) return DEFAULT_TRIP_DAYS;
+  return Math.max(1, Math.round(n));
+}
+
+/**
+ * Target card count for a trip length.
+ *
+ * One to six days read straight from the table, which is not linear (the steps
+ * are +3, +3, +5, +4, +6) because each row was chosen by hand. Beyond six the
+ * table gives out and the count continues at a flat four per day.
+ */
+function cardTargetForDays(days: unknown): number {
+  const d = normaliseDays(days);
+  if (d <= LONG_TRIP_ANCHOR_DAYS) return CARD_TARGETS[d];
+  return CARD_TARGETS[LONG_TRIP_ANCHOR_DAYS] + LONG_TRIP_SLOPE * (d - LONG_TRIP_ANCHOR_DAYS);
+}
+
+/** Hard ceiling on how many cards a trip of this length may produce. */
+function cardCapForDays(days: unknown): number {
+  return Math.round(cardTargetForDays(days) * CARD_CAP_MULTIPLIER);
+}
 
 interface LocationSuggestion {
   name: string;
@@ -165,8 +230,17 @@ function isQuotaExhausted(status: number, body: string): boolean {
  * Derives the same cache key the client builds in tripService.buildDeckId.
  * Both sides must agree, so it is recomputed here rather than trusted from the
  * request body — a mismatched key would silently create a second cache entry.
+ *
+ * Trip length is part of the key, not a detail of the prompt. Without it a
+ * one-day and a six-day trip to the same destination with the same preferences
+ * shared one deck, and whoever arrived second was handed the first person's
+ * card count regardless of how long they were staying.
  */
-function buildDeckId(destination: string, preferences: Record<string, unknown>): string {
+function buildDeckId(
+  destination: string,
+  preferences: Record<string, unknown>,
+  days: number
+): string {
   const dest = destination.trim().toLowerCase().replace(/\s+/g, " ");
   const prefs = preferences || {};
   const parts = Object.keys(prefs)
@@ -178,7 +252,7 @@ function buildDeckId(destination: string, preferences: Record<string, unknown>):
       return `${key}=${String(value)}`;
     })
     .filter(Boolean);
-  return `${dest}::${parts.join("|")}`;
+  return `${dest}::${[...parts, `days=${days}`].join("|")}`;
 }
 
 /** Minimal PostgREST client bound to the service role, which bypasses RLS. */
@@ -395,8 +469,22 @@ Deno.serve(async (req: Request) => {
   const destination = (body.destination || "").trim();
   if (!destination) return json({ error: "destination is required" }, 400);
 
+  // Trip length in inclusive days: 5 Oct to 9 Oct is five days, not four.
+  //
+  // This used to measure the gap between the dates, which is the number of
+  // *nights*, so a 5-day trip announced "Trip length: 4 days" here while the
+  // itinerary and the hub badge both called it five. Anything sizing a deck from
+  // the length would have been off by one against what the traveller sees.
+  const tripDays = normaliseDays(
+    body.startDate && body.endDate
+      ? Math.round((new Date(body.endDate!).getTime() - new Date(body.startDate!).getTime()) / 86_400_000) + 1
+      : null
+  );
+  const targetCardCount = cardTargetForDays(tripDays);
+  const capCardCount = cardCapForDays(tripDays);
+
   const preferences = body.preferences || {};
-  const deckId = buildDeckId(destination, preferences);
+  const deckId = buildDeckId(destination, preferences, tripDays);
   const admin = adminClient(SUPABASE_URL, SECRET_KEY);
 
   // Only the claim's own user may generate. A second request for the same deck
@@ -513,22 +601,18 @@ Deno.serve(async (req: Request) => {
       preferences.note ? `Extra note: ${preferences.note}` : "",
     ].filter(Boolean).join("\n");
 
-    const tripLength =
-      body.startDate && body.endDate
-        ? Math.max(1, Math.round((new Date(body.endDate).getTime() - new Date(body.startDate).getTime()) / 86400000))
-        : null;
-
-    const systemInstruction = `You are the jet2holiday Itinerary Agent. Your ONLY job: given a travel destination, return a JSON array of the best places to visit there.
+    const systemInstruction = `You are the jet2holiday Itinerary Agent. Your ONLY job: given a travel destination and a trip length, return a JSON array of the best places to visit there.
 Output format: [{"name":"Place name","category":"one of: ${CATEGORIES.join(", ")}","estimated_duration_min":90}]
 Rules:
-- Return between 6 and 19 locations. Pick the count based on how much the destination offers (a small town → ~6, a world city → ~15).
+- Aim for ${targetCardCount} locations: that is roughly ${targetCardCount} candidate places for each of ${tripDays} day${tripDays === 1 ? "" : "s"}, and it is what the traveller expects to choose between. Never return more than ${capCardCount}.
+- Use the destination to decide where within that to land, not to override it. A small town with genuinely little to offer may come in a little under the target; a big city may run a little over. Padding out a thin destination with filler is worse than returning fewer, real places.
 - Each category MUST be exactly one of: ${CATEGORIES.join(", ")}.
 - Prefer area-level, well-known, real places (landmarks, neighborhoods, markets, viewpoints) over obscure or hyper-specific spots.
 - Set \`estimated_duration_min\` to your best estimate of how long a typical visitor spends at the place, as a plain integer number of minutes. Use your knowledge: a quick viewpoint or market stall is 20–30, a neighbourhood or park is 60–90, a major museum or theme park is 120–180. Never omit it or set it to null.
 - No prose, no markdown, no code fences — just the raw JSON array.`;
 
     const userPrompt = `Destination: ${destination}
-${tripLength ? `Trip length: ${tripLength} day${tripLength === 1 ? "" : "s"}` : ""}
+Trip length: ${tripDays} day${tripDays === 1 ? "" : "s"}
 ${prefLines ? `Traveller preferences:\n${prefLines}` : ""}
 
 Return the JSON array of locations now:`;
@@ -557,7 +641,11 @@ Return the JSON array of locations now:`;
                 contents: [{ role: "user", parts: [{ text: userPrompt }] }],
                 generationConfig: {
                   temperature: 0.4,
-                  maxOutputTokens: 4096,
+                  // Sized for the largest deck the table can ask for. At ~35
+                  // tokens per location, 4096 held barely 19 cards — enough for
+                  // the old fixed range, but a fortnight's 57 would have been
+                  // cut off mid-array.
+                  maxOutputTokens: 8192,
                   responseMimeType: "application/json",
                 },
               }),
@@ -606,6 +694,19 @@ Return the JSON array of locations now:`;
           }
 
           const data = await geminiRes.json();
+
+          // A response cut off at the token ceiling is a truncated JSON array,
+          // not a short one. Accepting it here sends a syntactically broken
+          // string to JSON.parse below, which reports "could not parse" and
+          // fails the whole deck for a reason that looks like bad JSON but is
+          // really "the model tried to write more than it was allowed".
+          const finishReason = data?.candidates?.[0]?.finishReason;
+          if (finishReason === "MAX_TOKENS") {
+            lastStatus = "truncated at the token limit";
+            console.warn(`[generate-trip] ${model} hit the token ceiling; trying the next model`);
+            continue;
+          }
+
           rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
           if (rawText.trim().length > 0) {
             console.log(`[generate-trip] Gemini generated locations via ${model}`);
@@ -675,7 +776,7 @@ Return the JSON array of locations now:`;
             : null,
       }))
       .filter((l: LocationSuggestion) => l.name.length > 0)
-      .slice(0, MAX_CARDS);
+      .slice(0, capCardCount);
 
     if (locations.length === 0) {
       return await fail("Gemini returned no usable locations");

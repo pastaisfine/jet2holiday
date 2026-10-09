@@ -163,7 +163,8 @@ export default function SetupStep1Screen({ useAppState }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8, paddingLeft: 32 }}>
-            Optional — you can set dates later.
+            Optional — but your dates set how many places we find, so a single day gets a
+            short list and a week gets a long one.
           </div>
         </div>
       </div>

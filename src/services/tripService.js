@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { normaliseDays } from "../lib/cardTargets";
 
 /**
  * Ensures the authenticated user has a profile record in public.profiles.
@@ -324,17 +325,21 @@ export async function getTripSwipes(tripId) {
 export const PHOTO_BUCKET = "trip-photos";
 
 /**
- * Stable cache key for a (destination, preferences) pair.
+ * Stable cache key for a (destination, preferences, trip length) tuple.
  *
- * Both sides of the wire must agree on this, so the edge function recomputes it
+ * Both sides of the wire must agree, so the edge function recomputes it
  * rather than trusting a client-supplied id. Destination is lowercased and
  * whitespace-collapsed so "Lisbon, Portugal" and " lisbon,  portugal " share a
  * cache entry.
+ *
+ * Trip length is part of the key because it sizes the deck. Leaving it out
+ * meant a one-day and a six-day trip to the same destination shared one deck,
+ * and the second traveller was handed the first one's card count.
  */
-export function buildDeckId(destination, preferences) {
+export function buildDeckId(destination, preferences, days) {
   const dest = (destination || "").trim().toLowerCase().replace(/\s+/g, " ");
   const prefs = normalizePreferences(preferences);
-  return `${dest}::${prefs}`;
+  return `${dest}::${[prefs, `days=${normaliseDays(days)}`].filter(Boolean).join("|")}`;
 }
 
 /**

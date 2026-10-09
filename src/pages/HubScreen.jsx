@@ -10,6 +10,9 @@ import { getTripMembers, getTripSwipes, subscribeTripMembers, subscribeTripSwipe
 import { getTripPreferenceSummaries } from "../services/preference";
 import { useGroupPlan, loadGroupPlan, startGroupPlan } from "../services/groupPlan";
 import { ArrowSquareOut, Sparkle, WarningCircle } from "@phosphor-icons/react";
+import { CARD_DATA } from "../data/cards";
+
+const FALLBACK_CARD_IDS = new Set(CARD_DATA.map((c) => c.id));
 
 const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -27,7 +30,7 @@ export default function HubScreen({ useAppState }) {
   const { profile } = useAuth();
   const {
     likes, skips, reasonCount, styleSeen, styleName, dest, startDate, endDate,
-    hotel, flight, tripId
+    hotel, flight, tripId, addedCards
   } = useAppState;
   const { plan, phase: planPhase, error: planError } = useGroupPlan();
 
@@ -82,7 +85,17 @@ export default function HubScreen({ useAppState }) {
 
 
   const dateRange = fmtDateRange(startDate, endDate);
-  const days = startDate && endDate ? dayCount(startDate, endDate) : 3;
+  const hasTripDates = Boolean(startDate && endDate);
+  const days = hasTripDates ? dayCount(startDate, endDate) : null;
+
+  // What the swipe screen is actually showing. Deck size tracks trip length, so
+  // a fixed "9 places" here was wrong for every generated trip — and would have
+  // been wrong by more the longer the trip got.
+  const generatedCount = (addedCards || []).filter((c) => !FALLBACK_CARD_IDS.has(c.id)).length;
+  const deckCount = generatedCount > 0 ? generatedCount : CARD_DATA.length;
+  const swipePrompt = hasTripDates
+    ? `${deckCount} places, ~${Math.max(2, Math.round(deckCount / 5))} minutes. Swipe right for want, left for skip. Add a reason and the AI learns.`
+    : `${deckCount} sample places for now. Add your dates and we'll find the right number for your trip.`;
 
   const validated = plan?.validated_plan || null;
   const planDays = useMemo(() => validated?.days || [], [validated]);
@@ -272,9 +285,11 @@ export default function HubScreen({ useAppState }) {
                 {dateRange}
               </span>
             )}
-            <span style={{ background: "rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", color: "var(--on-photo)", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
-              {days} days
-            </span>
+            {days != null && (
+              <span style={{ background: "rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", color: "var(--on-photo)", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
+                {days} {days === 1 ? "day" : "days"}
+              </span>
+            )}
             <span style={{ background: "var(--accent)", color: "var(--accent-ink)", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600 }}>
               {effectiveTotalMembers} {effectiveTotalMembers === 1 ? "member" : "members"}
             </span>
@@ -378,7 +393,7 @@ export default function HubScreen({ useAppState }) {
             <div style={{ marginTop: 6, fontSize: 14, color: mineDone ? "var(--muted)" : "var(--surface)", lineHeight: 1.4 }}>
               {mineDone
                 ? `${displayLikes} liked, ${displaySkips} skipped, ${reasonCount} reasons logged. We're tuning the itinerary to your taste.`
-                : "9 places, ~2 minutes. Swipe right for want, left for skip. Add a reason and the AI learns."}
+                : swipePrompt}
             </div>
           </div>
 

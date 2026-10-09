@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { supabase } from "../lib/supabase";
+import { normaliseDays } from "../lib/cardTargets";
+import { dayCount } from "../utils/date";
 import {
   buildDeckId,
   getDeck,
@@ -84,7 +86,9 @@ export function resetPipeline() {
  * landed instead of paying for the whole pipeline again.
  *
  * Returns once the deck is claimed and the subscriptions are live, not once
- * generation is finished.
+ * generation is finished. Resolves with the id of the deck the streamed cards
+ * belong to (null when there is no session to generate for), so callers can
+ * record which deck their local cards came from.
  */
 export async function startPipeline({
   destination,
@@ -96,14 +100,18 @@ export async function startPipeline({
 }) {
   teardown();
   const finalDest = (destination || "").trim() || "Lisbon, Portugal";
-  const deckId = buildDeckId(finalDest, preferences);
+  // Sizes the deck and is part of the cache key, so it has to agree exactly
+  // with the edge function's own arithmetic — which is inclusive of both ends,
+  // the same convention dayCount and the itinerary already use.
+  const tripDays = normaliseDays(startDate && endDate ? dayCount(startDate, endDate) : null);
+  const deckId = buildDeckId(finalDest, preferences, tripDays);
 
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
   if (!token) {
     resetState();
     emit({ phase: "error", error: "Not signed in" });
-    return;
+    return null;
   }
 
   emit({ deckId, phase: "generating", expectedCount: 0, cards: [], error: null });
@@ -152,7 +160,7 @@ export async function startPipeline({
     // Nothing to do if the deck is complete, unless the caller is regenerating.
     if (existing.status === "ready" && !force) {
       emit({ phase: "done", expectedCount: existing.location_count || cards.length, error: null });
-      return;
+      return deckId;
     }
   }
 
@@ -177,7 +185,7 @@ export async function startPipeline({
         phase: state.cards.length > 0 ? "done" : "error",
         error: payload.error || `Pipeline failed (${res.status})`,
       });
-      return;
+      return deckId;
     }
 
     // Cards arrive over Realtime long before this response. The status here
@@ -201,6 +209,8 @@ export async function startPipeline({
       emit({ phase: "error", error: "Could not reach the trip generator" });
     }
   }
+
+  return deckId;
 }
 
 /**

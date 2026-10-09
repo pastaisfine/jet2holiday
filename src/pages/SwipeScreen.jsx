@@ -84,6 +84,8 @@ export default function SwipeScreen({ useAppState }) {
     preferenceProfiles,
     savePreferenceProfile,
     dest,
+    startDate,
+    endDate,
     pipelineCompleted,
     tripId,
     update,
@@ -441,7 +443,15 @@ export default function SwipeScreen({ useAppState }) {
   );
 
   const isLisbon = !dest || dest === LISBON_FALLBACK;
+  // The fallback cards are the Lisbon deck. A trip to anywhere else must never
+  // be shown them: verdicts are stored under the trip's own destination, so
+  // Lisbon cards would otherwise feed the preference agent Lisbon data for a
+  // Barcelona trip. Trips without dates have no sized deck to size a generation
+  // for, but their linked deck (if one exists) still resumes below.
   const showFallbackDeck = isLisbon || Boolean(pipelineThinFallback);
+  // A trip without dates has no deck to size and nothing to resume, so the
+  // header CTA points the traveller at adding them.
+  const hasTripDates = Boolean(startDate && endDate);
 
   // Generated cards are no longer gated on their image bytes having arrived. A
   // card renders as soon as its row lands and falls back to a placeholder if
@@ -487,18 +497,23 @@ export default function SwipeScreen({ useAppState }) {
     resumeAttemptedRef.current = true;
 
     (async () => {
-      const deckId = await getTripDeckId(tripId);
-      if (!deckId) return;
-      // Record which deck the resumed cards belong to, so opening another
-      // trip's link later can tell the decks apart.
-      update({ cardsDeckId: deckId });
-      await startPipeline({
+      const linkedDeckId = await getTripDeckId(tripId);
+      if (!linkedDeckId) return;
+      // Record the deck the cards will actually come from: startPipeline may
+      // claim a different deck (destination, preferences and trip length all
+      // shape the key), and cardsDeckId is what another trip's link compares
+      // against to tell the decks apart when switching trips.
+      const deckId = (await startPipeline({
         destination: dest || LISBON_FALLBACK,
+        startDate,
+        endDate,
         preferences: preferences || {},
         tripId,
-      });
+      })) || linkedDeckId;
+
+      update({ cardsDeckId: deckId });
     })();
-  }, [tripId, session?.user?.id, pipeline.phase, dest, preferences, addedCards, update]);
+  }, [tripId, session?.user?.id, pipeline.phase, dest, preferences, addedCards, update, startDate, endDate]);
 
   // Ingest streamed deck rows into the card deck. Cards arrive already in UI
   // shape, so this is an append rather than a mapping step, and the deck grows
@@ -822,6 +837,14 @@ return (
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, marginTop: 2, color: "var(--fg)" }}>
               {unswiped.length === 0 ? total : Math.min(swipedCount + 1, total)} <span style={{ color: "var(--muted)", fontWeight: 400 }}>of {total} places</span>
             </div>
+            {!hasTripDates && (
+              <button
+                onClick={() => navigate("/setup/step1")}
+                style={{ background: "none", border: "none", padding: 0, marginTop: 4, color: "var(--accent)", fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "left" }}
+              >
+                Add your dates for a deck sized to your trip →
+              </button>
+            )}
           </div>
           <div className="chip" style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--fg)", fontWeight: 600, fontSize: 12, padding: "4px 12px" }}>
             {likes} liked · {skips} skipped

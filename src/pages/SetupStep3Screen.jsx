@@ -167,13 +167,19 @@ export default function SetupStep3Screen({ useAppState }) {
       });
 
       resetPipeline();
-      startPipeline({
-        destination: finalDest,
-        startDate: localStart ? localStart.toISOString() : null,
-        endDate: localEnd ? localEnd.toISOString() : null,
-        preferences,
-        tripId: createdTripId || appTripId || null,
-      });
+      // Trip length decides the deck size, so a trip without dates has no size
+      // to generate. The swipe screen prompts for dates instead of guessing;
+      // generating now would hand every undated trip the same list whatever
+      // they were actually planning.
+      if (localStart && localEnd) {
+        startPipeline({
+          destination: finalDest,
+          startDate: localStart.toISOString(),
+          endDate: localEnd.toISOString(),
+          preferences,
+          tripId: createdTripId || appTripId || null,
+        });
+      }
     }
 
     navigate("/swipe");
