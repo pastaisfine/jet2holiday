@@ -20,6 +20,48 @@ const CATEGORIES = Object.keys(CATEGORY_TO_STYLE);
 const PHOTO_BUCKET = "trip-photos";
 
 /**
+ * Every way a deck can fail, as a code the client can branch on.
+ *
+ * This exists because the alternative was the UI inferring the cause from
+ * `error_message`, and it inferred wrong in the worst possible direction: a deck
+ * that returned no cards was reported to the traveller as "limited photo-
+ * verified places found for {destination}", blaming Johor when the real cause
+ * was a stale deploy writing cards under a key the client never read. The
+ * message was confidently wrong, which is worse than saying nothing.
+ *
+ * A code here means the server *knows* what went wrong and is stating it. The
+ * absence of a code means there is no failure to explain. The client is required
+ * to render the unknown as unknown rather than falling back to a guess.
+ */
+const DECK_FAILURE = {
+  /** The place search ran and nothing it found had a usable photo. */
+  NO_PHOTO_RESULTS: "no_photo_results",
+  /** The model named no usable locations for this destination. */
+  NO_LOCATIONS: "no_locations",
+  /** Places were found but the database rejected the rows. Our fault. */
+  STORAGE_FAULT: "storage_fault",
+  /** Gemini or SerpApi was unreachable or refusing us. Not the destination's. */
+  PROVIDER_UNAVAILABLE: "provider_unavailable",
+  /** Could not claim the deck row, so generation never started. */
+  CLAIM_FAILED: "claim_failed",
+  /**
+   * The client asked for one deck key and this function computed another.
+   *
+   * Purely our bug, and the one worth naming precisely: the two sides of the
+   * cache key are duplicated implementations that nothing compares. When they
+   * drift the generator writes a full, healthy deck that the client is not
+   * watching — a silent failure with a 200 on both ends and no way to tell it
+   * apart from a thin destination. The client already sends the key it intends
+   * to read, so this is detectable exactly where it happens.
+   */
+  DECK_KEY_MISMATCH: "deck_key_mismatch",
+  /** Escaped an exception we have no classification for. */
+  UNKNOWN: "unknown",
+} as const;
+
+type DeckFailureCode = (typeof DECK_FAILURE)[keyof typeof DECK_FAILURE];
+
+/**
  * How many swipe cards a trip of a given length should produce.
  *
  * The deck is sized from trip length because a swiper's effort should scale
@@ -326,7 +368,17 @@ function adminClient(supabaseUrl: string, serviceRoleKey: string) {
     async linkTripToDeck(tripId: string, deckId: string) {
       const res = await fetch(
         `${supabaseUrl}/rest/v1/trip_deck_links?on_conflict=trip_id`,
-        { method: "POST", headers, body: JSON.stringify({ trip_id: tripId, deck_id: deckId }) }
+        {
+          method: "POST",
+          // `on_conflict` in the query string is inert on its own: PostgREST only
+          // treats the POST as an upsert when this header says so, so without it
+          // the request degrades to a plain INSERT and every relink of an
+          // already-linked trip fails 409 on the trip_deck_links primary key. A
+          // trip would then stay pinned to the first deck it ever generated,
+          // even after the traveller changed destination, dates or preferences.
+          headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({ trip_id: tripId, deck_id: deckId }),
+        }
       );
       if (!res.ok) {
         // Not fatal: the deck still generates and streams, and a later call
@@ -343,6 +395,13 @@ function adminClient(supabaseUrl: string, serviceRoleKey: string) {
         console.warn(`[generate-trip] Deck update failed: ${res.status} ${await res.text().catch(() => "")}`);
       }
       return res.ok;
+    },
+    async markDeckFailed(deckId: string, code: DeckFailureCode, message: string) {
+      await fetch(`${supabaseUrl}/rest/v1/curated_decks?id=eq.${encodeURIComponent(deckId)}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ status: "failed", error_code: code, error_message: message.slice(0, 500) }),
+      });
     },
     async setCardImage(cardId: string, storagePath: string) {
       const res = await fetch(
@@ -546,6 +605,22 @@ Deno.serve(async (req: Request) => {
     return json({ deckId, isGenerator: false, status: "pending", generated: false });
   }
 
+  // The client tells us which deck key it is about to read. It is not trusted
+  // for anything -- the key is recomputed above -- but comparing the two is the
+  // only place the drift between the two implementations becomes visible. When
+  // they disagree, generation writes a healthy deck nobody is watching, and the
+  // client sees an empty result it cannot explain. That is the exact shape of
+  // the failure that shipped as "limited photo-verified places found for
+  // Johor" while twelve cards sat in the table under a different key.
+  const clientDeckId = typeof body.deckId === "string" ? body.deckId.trim() : "";
+  if (clientDeckId && clientDeckId !== deckId) {
+    console.error(
+      `[generate-trip] DECK KEY MISMATCH for "${destination}" — ` +
+        `client will read "${clientDeckId}" but this function writes "${deckId}". ` +
+        `The two buildDeckId implementations have drifted; the client will find no cards.`
+    );
+  }
+
   const claimedAt = new Date().toISOString();
   if (!existing) {
     const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/curated_decks`, {
@@ -574,7 +649,13 @@ Deno.serve(async (req: Request) => {
 
     if (!insertRes.ok) {
       return json(
-        { deckId, isGenerator: false, status: "failed", error: `Deck claim failed (${insertRes.status})` },
+        {
+          deckId,
+          isGenerator: false,
+          status: "failed",
+          error_code: DECK_FAILURE.CLAIM_FAILED,
+          error: `Deck claim failed (${insertRes.status})`,
+        },
         200
       );
     }
@@ -604,10 +685,10 @@ Deno.serve(async (req: Request) => {
     clearedStaleCards = true;
   };
 
-  const fail = async (message: string) => {
-    console.error(`[generate-trip] FAILED for "${destination}": ${message}`);
-    await admin.updateDeck(deckId, { status: "failed", error_message: message.slice(0, 500) });
-    return json({ deckId, isGenerator: true, status: "failed", error: message }, 200);
+  const fail = async (code: DeckFailureCode, message: string) => {
+    console.error(`[generate-trip] FAILED (${code}) for "${destination}": ${message}`);
+    await admin.markDeckFailed(deckId, code, message);
+    return json({ deckId, isGenerator: true, status: "failed", error_code: code, error: message }, 200);
   };
 
   try {
@@ -755,12 +836,14 @@ Return the JSON array of locations now:`;
       const allOutOfQuota = perModel.length > 0 && perModel.every((line) => line.includes("out of quota"));
       if (allOutOfQuota) {
         return await fail(
+          DECK_FAILURE.PROVIDER_UNAVAILABLE,
           `Every Gemini model is out of quota for this project key ` +
             `(${perModel.join(" | ")}). Check billing and quota at ` +
             `https://ai.google.dev/gemini-api/quotas.`
         );
       }
       return await fail(
+        DECK_FAILURE.PROVIDER_UNAVAILABLE,
         `Gemini unavailable across ${GEMINI_MODELS.length} models. ` +
           `Per-model: ${perModel.join(" | ")}. ` +
           `Last response: ${modelErrors[modelErrors.length - 1] ?? "none"}`
@@ -780,12 +863,15 @@ Return the JSON array of locations now:`;
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      return await fail("Could not parse location list from Gemini response");
+      return await fail(
+        DECK_FAILURE.NO_LOCATIONS,
+        "Could not parse location list from Gemini response"
+      );
     }
 
     const rawLocations = Array.isArray(parsed) ? parsed : (parsed as any)?.locations;
     if (!Array.isArray(rawLocations)) {
-      return await fail("Gemini response was not a location array");
+      return await fail(DECK_FAILURE.NO_LOCATIONS, "Gemini response was not a location array");
     }
 
     const locations: LocationSuggestion[] = rawLocations
@@ -803,7 +889,7 @@ Return the JSON array of locations now:`;
       .slice(0, capCardCount);
 
     if (locations.length === 0) {
-      return await fail("Gemini returned no usable locations");
+      return await fail(DECK_FAILURE.NO_LOCATIONS, "Gemini returned no usable locations");
     }
 
     // Publish the count before enrichment starts. This is the progress signal
@@ -960,13 +1046,19 @@ Return the JSON array of locations now:`;
       // insert failures mean the database rejected the row.
       if (insertFailures > 0) {
         return await fail(
+          DECK_FAILURE.STORAGE_FAULT,
           `Found ${locations.length} photo-verified places but could not save any of them ` +
             `(${insertFailures} database insert${insertFailures === 1 ? "" : "s"} failed). ` +
             `This is a storage fault, not a missing-photo problem — check the trip_cards schema ` +
             `against the deployed function.`
         );
       }
+      // The one case where "this destination has little to show" is a fact
+      // rather than a guess: the search ran, and every result it returned was
+      // rejected for want of a usable photo. This is the only code the client is
+      // permitted to render as a thin destination.
       return await fail(
+        DECK_FAILURE.NO_PHOTO_RESULTS,
         `No location had a usable photo (${photoMisses}/${locations.length} searched).`
       );
     }
@@ -982,6 +1074,6 @@ Return the JSON array of locations now:`;
 
     return json({ deckId, isGenerator: true, status: "ready", generated: true, count: inserted });
   } catch (err) {
-    return await fail(String(err));
+    return await fail(DECK_FAILURE.UNKNOWN, String(err));
   }
 });

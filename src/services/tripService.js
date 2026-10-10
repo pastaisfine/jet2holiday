@@ -363,10 +363,17 @@ function normalizePreferences(preferences) {
 }
 
 /**
- * Fetches a deck by its cache key, or null if nothing has been generated yet.
+ * Fetches a deck by its cache key.
+ *
+ * Returns `{ ok: true, deck }` or `{ ok: false, reason }`. It used to return
+ * `null` for both "no such deck" and "the query failed", which is the difference
+ * between a destination that has nothing to offer and a network or permissions
+ * problem on our side. Callers that treat both as absence end up telling the
+ * traveller the wrong thing entirely, so the two are kept apart deliberately.
  */
 export async function getDeck(deckId) {
-  if (!deckId) return null;
+  if (!deckId) return { ok: true, deck: null };
+
   const { data, error } = await supabase
     .from("curated_decks")
     .select("*")
@@ -375,9 +382,9 @@ export async function getDeck(deckId) {
 
   if (error) {
     console.warn("Error fetching deck:", error.message);
-    return null;
+    return { ok: false, reason: "read_failed" };
   }
-  return data;
+  return { ok: true, deck: data };
 }
 
 /**

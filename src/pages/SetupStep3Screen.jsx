@@ -163,6 +163,7 @@ export default function SetupStep3Screen({ useAppState }) {
         pipelineCompleted: false,
         pipelineDest: finalDest,
         pipelineThinFallback: false,
+        pipelineFailureCode: null,
         tripId: createdTripId || appTripId || null,
       });
 

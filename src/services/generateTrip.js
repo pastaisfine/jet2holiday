@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { supabase } from "../lib/supabase";
 import { normaliseDays } from "../lib/cardTargets";
+import { CLIENT_FAILURE, DECK_FAILURE } from "../lib/deckFailure";
 import { dayCount } from "../utils/date";
 import {
   buildDeckId,
@@ -26,6 +27,10 @@ let state = {
   expectedCount: 0,
   cards: [],
   error: null,
+  // Machine-readable reason, when the server or the client knows one. Paired
+  // with `error` (the raw diagnostic, for the logs) so the UI can be handed a
+  // cause it is allowed to state instead of inferring one.
+  errorCode: null,
 };
 
 const listeners = new Set();
@@ -67,6 +72,7 @@ function resetState() {
     expectedCount: 0,
     cards: [],
     error: null,
+    errorCode: null,
   };
   listeners.forEach((fn) => fn());
 }
@@ -110,11 +116,11 @@ export async function startPipeline({
   const token = sessionData?.session?.access_token;
   if (!token) {
     resetState();
-    emit({ phase: "error", error: "Not signed in" });
+    emit({ phase: "error", error: "Not signed in", errorCode: CLIENT_FAILURE.NOT_SIGNED_IN });
     return null;
   }
 
-  emit({ deckId, phase: "generating", expectedCount: 0, cards: [], error: null });
+  emit({ deckId, phase: "generating", expectedCount: 0, cards: [], error: null, errorCode: null });
 
   const watch = (id) => {
     unsubscribers.push(
@@ -137,9 +143,13 @@ export async function startPipeline({
         if (deck.status === "ready") {
           // error: null because an earlier optimistic failure (e.g. "someone
           // else is generating") must not outlive the deck it was reported for.
-          emit({ phase: "done", expectedCount: state.expectedCount || deck.card_count || 0, error: null });
+          emit({ phase: "done", expectedCount: state.expectedCount || deck.card_count || 0, error: null, errorCode: null });
         } else if (deck.status === "failed") {
-          emit({ phase: state.cards.length > 0 ? "done" : "error", error: deck.error_message });
+          emit({
+            phase: state.cards.length > 0 ? "done" : "error",
+            error: deck.error_message,
+            errorCode: deck.error_code || DECK_FAILURE.UNKNOWN,
+          });
         }
       })
     );
@@ -151,7 +161,17 @@ export async function startPipeline({
   // A deck that already exists may have cards worth showing immediately —
   // including a ready deck, where no generation is needed at all. Reading is
   // always allowed, so this is safe on every path.
-  const existing = await getDeck(deckId);
+  //
+  // A failed read is reported rather than treated as absence. Conflating them
+  // is how "we couldn't reach the database" ends up on screen as "this
+  // destination doesn't have much to offer".
+  const read = await getDeck(deckId);
+  if (!read.ok) {
+    emit({ phase: state.cards.length > 0 ? "done" : "error", error: `Deck read failed: ${deckId}`, errorCode: CLIENT_FAILURE.READ_FAILED });
+    return deckId;
+  }
+
+  const existing = read.deck;
   if (existing) {
     const cards = await getDeckCards(deckId);
     if (existing.location_count) emit({ expectedCount: existing.location_count });
@@ -159,7 +179,7 @@ export async function startPipeline({
 
     // Nothing to do if the deck is complete, unless the caller is regenerating.
     if (existing.status === "ready" && !force) {
-      emit({ phase: "done", expectedCount: existing.location_count || cards.length, error: null });
+      emit({ phase: "done", expectedCount: existing.location_count || cards.length, error: null, errorCode: null });
       return deckId;
     }
   }
@@ -184,6 +204,7 @@ export async function startPipeline({
       emit({
         phase: state.cards.length > 0 ? "done" : "error",
         error: payload.error || `Pipeline failed (${res.status})`,
+        errorCode: payload.error_code || DECK_FAILURE.UNKNOWN,
       });
       return deckId;
     }
@@ -192,21 +213,21 @@ export async function startPipeline({
     // only settles the case where nothing else can: a cache hit, or a failure
     // with no rows to show.
     if (payload.status === "ready") {
-      emit({ phase: "done", expectedCount: state.expectedCount || payload.count || 0, error: null });
+      emit({ phase: "done", expectedCount: state.expectedCount || payload.count || 0, error: null, errorCode: null });
     } else if (payload.status === "failed" && !payload.generated) {
-      emit({ phase: state.cards.length > 0 ? "done" : "error", error: payload.error });
+      emit({ phase: state.cards.length > 0 ? "done" : "error", error: payload.error, errorCode: payload.error_code || DECK_FAILURE.UNKNOWN });
     } else if (payload.status === "pending" && state.cards.length === 0) {
       // Another user holds the claim, so this request generated nothing and no
       // status event is coming for us. Leaving the phase alone parks the user
       // on "Curating…" forever, so say what is actually happening instead.
-      emit({ phase: "error", error: "Someone else is generating this deck right now. Try again shortly." });
+      emit({ phase: "error", error: "Someone else is generating this deck right now. Try again shortly.", errorCode: CLIENT_FAILURE.OTHER_USER_GENERATING });
     }
   } catch (err) {
     // A dropped connection does not cancel generation: the edge function keeps
     // inserting rows and Realtime keeps delivering them.
     console.warn("generate-trip request failed, relying on Realtime:", err);
     if (state.cards.length === 0) {
-      emit({ phase: "error", error: "Could not reach the trip generator" });
+      emit({ phase: "error", error: "Could not reach the trip generator", errorCode: CLIENT_FAILURE.UNREACHABLE });
     }
   }
 

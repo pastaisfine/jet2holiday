@@ -144,6 +144,7 @@ export default function SetupScreen({ useAppState }) {
       pipelineCompleted: false,
       pipelineDest: finalDest,
       pipelineThinFallback: false,
+      pipelineFailureCode: null,
       tripId: createdTripId || tripId || null,
     });
 
