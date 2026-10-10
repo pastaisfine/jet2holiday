@@ -790,9 +790,8 @@ export default function PlanScreen({ useAppState }) {
       <div className="plan-head">
         <div className="eyebrow">{days.length ? `${days.length} day${days.length === 1 ? "" : "s"} · shared plan` : "shared plan"}</div>
         <div className="day">{shortDestination(dest)}</div>
-        {/* The download also lives at the foot of the plan, but a control that
-            only exists below the fold reads as absent: this is the one the
-            person who asked for a PDF will actually see. */}
+        {/* A control that only exists below the fold reads as absent: this is
+            the one the person who asked for a PDF will actually see. */}
         {confirmed && (
           <button
             className="btn btn-secondary btn-xs plan-head-pdf"
@@ -1124,13 +1123,6 @@ export default function PlanScreen({ useAppState }) {
               )}
               {confirmed && (
                 <div className="plan-pdf">
-                  <button
-                    className="btn btn-secondary btn-block"
-                    disabled={pdfBusy}
-                    onClick={downloadItineraryPDF}
-                  >
-                    {pdfBusy ? "Building your PDF…" : "Save as PDF"}
-                  </button>
                   {pdfProgress && <p className="plan-empty-note">{pdfProgress}</p>}
                   {pdfError && <div className="plan-error" role="alert">{pdfError}</div>}
                 </div>
