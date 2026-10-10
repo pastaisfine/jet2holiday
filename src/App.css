@@ -2861,6 +2861,20 @@
   line-height: 1.05;
 }
 
+/* The itinerary download, surfaced in the header once the plan is confirmed.
+   In normal flow rather than absolutely positioned, so it cannot overlap the
+   destination at any breakpoint. */
+.plan-head-pdf {
+  margin-top: 10px;
+}
+
+/* Wraps the footer copy of the same button with its progress and error text. */
+.plan-pdf {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* plan: satisfaction / basics / what-if stack, aligned with the timeline */
 .plan-cards {
   display: flex;

@@ -41,11 +41,11 @@ import {
   saveValidatedPlan,
 } from "../services/groupPlan";
 import { formatLeg } from "../lib/scheduler";
+import { buildItineraryPdf } from "../lib/pdf";
 import { parseTripDate } from "../utils/date";
 import Map, { Marker, Source, Layer } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { CalendarBlank, Plus, PencilSimple, Sparkle, WarningCircle } from "@phosphor-icons/react";
-import jsPDF from "jspdf";
 
 const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -206,6 +206,8 @@ export default function PlanScreen({ useAppState }) {
   const {
     dest,
     tripId,
+    startDate,
+    endDate,
     activeDayIndex,
     setActiveDayIndex,
   } = useAppState;
@@ -233,6 +235,9 @@ export default function PlanScreen({ useAppState }) {
   const [suggestStep, setSuggestStep] = useState(null);
   const [suggestOld, setSuggestOld] = useState(null);
   const [suggestBusy, setSuggestBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState("");
+  const [pdfError, setPdfError] = useState("");
   const debounceRef = useRef(null);
   const mapRef = useRef(null);
   const rebuildingRef = useRef(new Set());
@@ -664,43 +669,46 @@ export default function PlanScreen({ useAppState }) {
     applyStops(day.day_index, day.stops, { keepOrder: true, dayOverride: { ...day, transport_mode: mode } });
   };
 
-  const downloadItineraryPDF = () => {
-    if (!validated) return;
-    const doc = new jsPDF();
-    doc.setFillColor(45, 72, 58);
-    doc.rect(0, 0, 210, 34, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.text("Travel Itinerary", 105, 15, { align: "center" });
-    doc.setFontSize(11);
-    doc.text(`${shortDestination(dest)} · ${days.length} day${days.length === 1 ? "" : "s"}`, 105, 24, { align: "center" });
-
-    let y = 48;
-    days.forEach((d) => {
-      if (y > 250) { doc.addPage(); y = 20; }
-      doc.setTextColor(30, 30, 30);
-      doc.setFontSize(15);
-      doc.setFont(undefined, "bold");
-      doc.text(`${dayLabel(d)} · ${d.title}`, 15, y);
-      y += 9;
-
-      d.stops.forEach((s, index) => {
-        if (y > 255) { doc.addPage(); y = 20; }
-        doc.setFillColor(242, 246, 252);
-        doc.roundedRect(15, y - 4, 180, 18, 3, 3, "F");
-        doc.setFont(undefined, "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(90, 90, 90);
-        doc.text(`${s.t} - ${s.end}`, 20, y + 3);
-        doc.setTextColor(30, 30, 30);
-        doc.setFontSize(12);
-        doc.text(`${index + 1}. ${s.name}`, 58, y + 3);
-        y += 23;
+  /**
+   * Builds and saves the itinerary PDF.
+   *
+   * The document is assembled in the browser from the plan as it stands right
+   * now, so what lands on disk always matches what this person can see -- which
+   * matters because a confirmed plan is not frozen: members keep voting
+   * suggestions through and a day's stops can still change after confirmation.
+   *
+   * Fetching every photo and map is most of the wall clock, so the button
+   * reports it rather than looking hung. A failure inside the builder is
+   * reported too, because "nothing happened" is the worst possible outcome for
+   * a download button.
+   */
+  const downloadItineraryPDF = async () => {
+    if (!validated || pdfBusy) return;
+    setPdfBusy(true);
+    setPdfError("");
+    setPdfProgress("");
+    try {
+      const { doc, filename, skipped } = await buildItineraryPdf({
+        trip: { destination: dest, start_date: startDate, end_date: endDate },
+        plan,
+        members,
+        destination: dest,
+        onProgress: (done, total) => {
+          setPdfProgress(done < total ? `Building your PDF… ${done} of ${total}` : "Almost there…");
+        },
       });
-      y += 6;
-    });
-
-    doc.save(`${shortDestination(dest)}-itinerary.pdf`);
+      doc.save(filename);
+      setPdfProgress(
+        skipped > 0
+          ? `Saved ${filename}. ${skipped} image${skipped === 1 ? "" : "s"} could not be loaded.`
+          : "",
+      );
+    } catch (err) {
+      console.error("Could not build the itinerary PDF:", err);
+      setPdfError("Could not build the PDF. Please try again.");
+    } finally {
+      setPdfBusy(false);
+    }
   };
 
   const tabs = days.map((d, index) => ({ id: `day-${index}`, label: dayLabel(d), index }));
@@ -782,6 +790,18 @@ export default function PlanScreen({ useAppState }) {
       <div className="plan-head">
         <div className="eyebrow">{days.length ? `${days.length} day${days.length === 1 ? "" : "s"} · shared plan` : "shared plan"}</div>
         <div className="day">{shortDestination(dest)}</div>
+        {/* The download also lives at the foot of the plan, but a control that
+            only exists below the fold reads as absent: this is the one the
+            person who asked for a PDF will actually see. */}
+        {confirmed && (
+          <button
+            className="btn btn-secondary btn-xs plan-head-pdf"
+            disabled={pdfBusy}
+            onClick={downloadItineraryPDF}
+          >
+            {pdfBusy ? "Building…" : "Save as PDF"}
+          </button>
+        )}
       </div>
 
       {!validated ? (
@@ -1103,7 +1123,17 @@ export default function PlanScreen({ useAppState }) {
                 </>
               )}
               {confirmed && (
-                <button className="btn btn-secondary btn-block" onClick={downloadItineraryPDF}>Save as PDF</button>
+                <div className="plan-pdf">
+                  <button
+                    className="btn btn-secondary btn-block"
+                    disabled={pdfBusy}
+                    onClick={downloadItineraryPDF}
+                  >
+                    {pdfBusy ? "Building your PDF…" : "Save as PDF"}
+                  </button>
+                  {pdfProgress && <p className="plan-empty-note">{pdfProgress}</p>}
+                  {pdfError && <div className="plan-error" role="alert">{pdfError}</div>}
+                </div>
               )}
             </div>
           </div>
