@@ -33,6 +33,8 @@ let channel = null;
 let subscribedTripId = null;
 let schedulePromise = null;
 let scheduleTripId = null;
+let repairPromise = null;
+let repairTripId = null;
 
 function emit(patch) {
   state = { ...state, ...patch };
@@ -60,6 +62,8 @@ export function resetGroupPlan() {
   }
   schedulePromise = null;
   scheduleTripId = null;
+  repairPromise = null;
+  repairTripId = null;
   state = { tripId: null, phase: "idle", plan: null, error: null, scheduleProgress: null };
   listeners.forEach((fn) => fn());
 }
@@ -164,6 +168,59 @@ async function persistValidatedPlan(tripId, validatedPlan) {
   if (error) throw error;
 }
 
+/**
+ * Refills `day.geometry` on a stored plan whose days were routed when Mapbox
+ * was unavailable.
+ *
+ * A failed route is persisted as `geometry: null` and the plan is thereafter
+ * treated as final, so without this the map shows pins and no line forever.
+ * Only the geometry is touched: the stops are already ordered and timed, and
+ * re-running the scheduler would reorder a plan the group has since voted on
+ * or confirmed.
+ *
+ * Returns true when a write happened.
+ */
+async function repairGeometry(plan) {
+  const days = plan?.validated_plan?.days;
+  if (!Array.isArray(days)) return false;
+
+  const routable = days.filter((d) => !d.geometry && Array.isArray(d.stops) && d.stops.length >= 2);
+  if (routable.length === 0) return false;
+
+  const routed = [];
+  for (const day of routable) {
+    const route = await getDayRoute(
+      day.stops.map((s) => ({ lat: s.lat, lng: s.lng })),
+      day.transport_mode,
+    );
+    if (route?.geometry) routed.push([day.day_index, route.geometry]);
+  }
+  if (routed.length === 0) return false;
+
+  // Re-read before writing. The routing above can take seconds, and a member
+  // editing the plan in that window -- reordering a day, accepting a
+  // suggestion -- must not have their change overwritten by the snapshot this
+  // pass started from. Merging onto the fresh row keeps only the geometry we
+  // just fetched, so the two writes cannot collide.
+  const fresh = await fetchPlanRow(plan.trip_id);
+  const freshDays = fresh?.validated_plan?.days;
+  if (!Array.isArray(freshDays)) return false;
+
+  const byIndex = new Map(routed);
+  const nextDays = freshDays.map((day) => {
+    const geometry = byIndex.get(day.day_index);
+    return geometry && !day.geometry ? { ...day, geometry } : day;
+  });
+
+  // Nothing changed: either another member's client got there first, or the
+  // days were re-ordered out from under us. Writing anyway would be a no-op at
+  // best and a lost edit at worst.
+  if (nextDays.every((day, i) => day === freshDays[i])) return false;
+
+  await persistValidatedPlan(plan.trip_id, { ...fresh.validated_plan, days: nextDays });
+  return true;
+}
+
 function handleIncomingRow(row) {
   if (!row || row.trip_id !== state.tripId) return;
 
@@ -188,6 +245,7 @@ function handleIncomingRow(row) {
 
   if (row.status === "ready" && row.validated_plan) {
     emit({ phase: "ready", error: null, scheduleProgress: null });
+    runRepair(row);
     return;
   }
 
@@ -195,6 +253,7 @@ function handleIncomingRow(row) {
   // itinerary is on screen", the status column carries the voting state.
   if (row.status === "confirmed" && row.validated_plan) {
     emit({ phase: "ready", error: null, scheduleProgress: null });
+    runRepair(row);
   }
 }
 
@@ -266,6 +325,38 @@ function runScheduler(plan) {
   })();
 
   schedulePromise = promise;
+  return promise;
+}
+
+/**
+ * Backfills route geometry on a plan that was stored without it.
+ *
+ * Deliberately quiet: the plan is already on screen and correct apart from the
+ * missing line, so this never touches phase, progress or error. A repair that
+ * finds nothing to do returns without writing, which is what settles the loop
+ * when this write comes back through Realtime -- not the in-flight guard,
+ * which a ws event can race past.
+ */
+function runRepair(plan) {
+  if (repairPromise && repairTripId === plan.trip_id) return repairPromise;
+
+  repairTripId = plan.trip_id;
+  const promise = (async () => {
+    try {
+      await repairGeometry(plan);
+    } catch (err) {
+      // Cosmetic: the itinerary is complete without it, so a failed backfill is
+      // not worth surfacing or blocking on.
+      console.warn("Route geometry backfill failed:", err?.message || err);
+    } finally {
+      if (repairPromise === promise) {
+        repairPromise = null;
+        repairTripId = null;
+      }
+    }
+  })();
+
+  repairPromise = promise;
   return promise;
 }
 
