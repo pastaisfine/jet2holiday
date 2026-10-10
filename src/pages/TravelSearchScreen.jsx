@@ -22,6 +22,21 @@ import {
   searchVacationRentals,
 } from "../services/travelSearch";
 
+const AIRPORT_CODES = {
+  "Penang": "PEN",
+  "Kuala Lumpur": "KUL",
+  "Kota Kinabalu": "BKI",
+  "Kuching": "KCH",
+  "Labuan": "LBU",
+  "Terengganu": "TGG",
+  "Perak": "IPH",
+  "Pahang": "KUA",
+  "Malacca": "MKZ",
+  "Kelantan": "KBR",
+  "Kedah": "AOR",
+  "Johor": "JHB",
+};
+
 function getUpcomingDate(daysFromNow) {
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
@@ -85,7 +100,7 @@ export default function TravelSearchScreen({ useAppState }) {
   };
 
   // Currency
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("MYR");
 
   // Flight search form state
   const [tripType, setTripType] = useState("round");
@@ -199,7 +214,18 @@ export default function TravelSearchScreen({ useAppState }) {
 
   // Handlers for picking
   const handleSelectFlight = (flight) => {
-    selectFlight(flight);
+    selectFlight({
+    ...flight,
+    searchDetails: {
+      origin,
+      destination: flightDest,
+      tripType,
+      passengers,
+      cabinClass,
+      departureDate: depDate,
+      returnDate: tripType === "round" ? retDate : "",
+    },
+  });
     navigate("/travel");
   };
 
@@ -275,10 +301,14 @@ export default function TravelSearchScreen({ useAppState }) {
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
           >
+            <option value="MYR">MYR (RM)</option>
             <option value="USD">USD ($)</option>
             <option value="EUR">EUR (€)</option>
-            <option value="MYR">MYR (RM)</option>
             <option value="GBP">GBP (£)</option>
+            <option value="RMB">RMB (元)</option>
+            <option value="THB">THB (฿)</option>
+            <option value="JPY">JPY (¥)</option>
+            <option value="KRW">KRW (₩)</option>
           </select>
         </div>
       </div>
@@ -411,6 +441,13 @@ export default function TravelSearchScreen({ useAppState }) {
               </div>
             </div>
 
+            <div className="search-actions-row">
+              <div className="flight-search-hint">
+                💡 Please enter airport IATA codes when searching flights.
+                Examples: Kuala Lumpur → KUL, Penang → PEN.<br />
+                You can also click the destination buttons below for quick selection.
+              </div>
+
             <div className="flight-submit-row">
               <button
                 className="btn btn-primary flight-explore-btn"
@@ -422,6 +459,7 @@ export default function TravelSearchScreen({ useAppState }) {
               </button>
             </div>
           </div>
+          </div>
 
           {/* AI Deals Banner (From Image 0) */}
           <div className="flight-ai-deals-banner">
@@ -432,16 +470,6 @@ export default function TravelSearchScreen({ useAppState }) {
               <strong>Flexible? Discover the best flight deals with AI</strong>
               <p>Describe your ideal trip, and let Google Flights find the best deals for you</p>
             </div>
-            <button
-              className="btn btn-secondary btn-xs flight-ai-deals-cta"
-              onClick={() => {
-                setOrigin("Penang");
-                setFlightDest("Singapore");
-                doSearchFlights();
-              }}
-            >
-              Explore deals with AI
-            </button>
           </div>
 
           {/* Quick Destination Chips */}
@@ -450,13 +478,14 @@ export default function TravelSearchScreen({ useAppState }) {
               <h3>Find cheap flights from {origin} to anywhere</h3>
             </div>
             <div className="flight-quick-chips">
-              {["Penang", "Federal Territory of Kuala Lumpur", "Kota Kinabalu", "Kuching", "Labuan", "Terengganu", "Perak", "Pahang", "Malacca", "Kelantan", "Kedah", "Johor"].map(
+              {["Penang", "Kuala Lumpur", "Kota Kinabalu", "Kuching", "Labuan", "Terengganu", "Perak", "Pahang", "Malacca", "Kelantan", "Kedah", "Johor"].map(
                 (city) => (
                   <button
                     key={city}
-                    className={`chip ${flightDest.toLowerCase().includes(city.toLowerCase()) ? "sel" : ""}`}
+                    className={`chip ${flightDest === AIRPORT_CODES[city] ? "sel" : ""
+                      }`}
                     onClick={() => {
-                      setFlightDest(city);
+                      setFlightDest(AIRPORT_CODES[city]);
                       setTimeout(doSearchFlights, 50);
                     }}
                   >
@@ -528,9 +557,6 @@ export default function TravelSearchScreen({ useAppState }) {
                 </div>
 
                 <div className="flight-card-footer">
-                  {flight.carbonEmission && (
-                    <span className="flight-carbon-tag">🌱 {flight.carbonEmission}</span>
-                  )}
                   <button
                     className="btn btn-primary btn-xs"
                     onClick={() => handleSelectFlight(flight)}

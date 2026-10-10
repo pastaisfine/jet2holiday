@@ -77,11 +77,58 @@ export default function HubScreen({ useAppState }) {
 
 
   const getFlightBookingUrl = (flightName) => {
-    if (!flightName) return "#";
+  const search = flight?.searchDetails;
 
-    return `https://www.google.com/travel/flights?q=${encodeURIComponent(
-      flightName
-    )}`;
+  // Fallback for flights selected before search details were saved.
+  if (!search?.origin || !search?.destination) {
+    const flightName = flight?.airline || flight?.name;
+
+    return flightName
+      ? `https://www.google.com/travel/flights?q=${encodeURIComponent(
+          flightName
+        )}`
+      : "https://www.google.com/travel/flights";
+  }
+
+  const {
+    origin,
+    destination,
+    tripType,
+    passengers,
+    cabinClass,
+    departureDate,
+    returnDate,
+  } = search;
+
+  const formatDate = (date) => {
+    if (!date) return "";
+    const [year, month, day] = date.split("-");
+    return `${year}-${month}-${day}`;
+  };
+
+  const cabin = {
+    Economy: "economy",
+    Premium: "premium economy",
+    Business: "business class",
+    First: "first class",
+  }[cabinClass] || "economy";
+
+  let query =
+    `Flights from ${origin} to ${destination}` +
+    ` on ${formatDate(departureDate)}`;
+
+  if (tripType === "round" && returnDate) {
+    query += ` returning ${formatDate(returnDate)}`;
+  } else {
+    query += " one way";
+  }
+
+  query += ` for ${passengers} ${passengers === 1 ? "adult" : "adults"}`;
+  query += ` in ${cabin}`;
+
+  return `https://www.google.com/travel/flights?q=${encodeURIComponent(
+    query
+  )}`;
   };
 
 
@@ -483,10 +530,9 @@ export default function HubScreen({ useAppState }) {
                         const url =
                           item.label === "Stay"
                             ? getHotelBookingUrl(hotelPicked?.name)
-                            : getFlightBookingUrl(flightPicked?.name);
+                            : getFlightBookingUrl(flightPicked);
 
-
-                        window.open(url, "_blank");
+                        window.open(url, "_blank", "noopener,noreferrer");
                       }}
                       style={{
                         display: "flex",

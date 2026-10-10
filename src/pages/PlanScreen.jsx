@@ -235,6 +235,84 @@ export default function PlanScreen({ useAppState }) {
   const [suggestBusy, setSuggestBusy] = useState(false);
   const debounceRef = useRef(null);
   const mapRef = useRef(null);
+  
+const [myLocation, setMyLocation] = useState(null);
+const [locationError, setLocationError] = useState("");
+const [isTracking, setIsTracking] = useState(false);
+const locationWatchRef = useRef(null);
+
+
+/**
+ * 停止定位跟踪功能
+ * 该函数用于清除当前的地理位置监听，并更新跟踪状态
+ */
+  // 检查是否存在有效的地理位置监听ID
+const stopMyLocation = () => {
+  if (locationWatchRef.current !== null) {
+    navigator.geolocation.clearWatch(locationWatchRef.current);
+    locationWatchRef.current = null;
+  }
+
+  setIsTracking(false);
+};
+
+const startMyLocation = () => {
+  if (!navigator.geolocation) {
+    setLocationError("Geolocation is not supported by this browser.");
+    return;
+  }
+
+  // Avoid creating multiple location watchers.
+  if (locationWatchRef.current !== null) return;
+
+  setLocationError("");
+
+  locationWatchRef.current = navigator.geolocation.watchPosition(
+    (position) => {
+      const { latitude, longitude, accuracy } = position.coords;
+
+      // Keep the location in this user's browser state only.
+      setMyLocation({ latitude, longitude, accuracy });
+      setLocationError("");
+      setIsTracking(true);
+
+      // Center the map on the user's current position.
+      mapRef.current?.flyTo({
+        center: [longitude, latitude],
+        zoom: 16,
+        duration: 800,
+      });
+    },
+    (error) => {
+      setLocationError(
+        error.code === 1
+          ? "Location permission denied. Allow location access in your browser."
+          : error.code === 2
+            ? "Your location is unavailable. Check your device's location settings."
+            : "Location request timed out. Please try again."
+      );
+
+      stopMyLocation();
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 3000,
+      timeout: 15000,
+    }
+  );
+};
+
+useEffect(() => {
+  return () => {
+    if (locationWatchRef.current !== null) {
+      navigator.geolocation.clearWatch(locationWatchRef.current);
+      locationWatchRef.current = null;
+    }
+  };
+}, []);
+
+
+
   const rebuildingRef = useRef(new Set());
   const applyingRef = useRef(new Set());
 
@@ -796,6 +874,40 @@ export default function PlanScreen({ useAppState }) {
             />
           )}
 
+
+          <div className="my-location-controls">
+           {!isTracking ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={startMyLocation}
+            >
+            📍 Show my location
+            </button>
+             ) : (
+            <button
+             type="button"
+             className="btn btn-secondary"
+             onClick={stopMyLocation}
+            >
+            Stop location
+            </button>
+            )}
+
+            {isTracking && (
+             <span className="my-location-status">
+               Live location enabled
+             </span>
+             )}
+
+            {locationError && (
+             <p className="my-location-error" role="alert">
+               {locationError}
+             </p>
+            )}
+</div>
+
+
           <div className="plan-map-card">
             <Map
               ref={mapRef}
@@ -821,7 +933,22 @@ export default function PlanScreen({ useAppState }) {
                   </Marker>
                 ) : null,
               )}
-            </Map>
+
+
+             {/* Private marker: visible only in this user's browser */}
+              {myLocation && (
+               <Marker
+                longitude={myLocation.longitude}
+                latitude={myLocation.latitude}
+                 anchor="center"
+               >
+               <div className="my-location-marker" title="Your current location">
+               <span className="my-location-pulse" />
+               <span className="my-location-dot" />
+               </div>
+               </Marker>
+              )}
+             </Map>
           </div>
 
           <div className="plan-sheet">
