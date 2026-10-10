@@ -1,24 +1,11 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Crown } from "phosphor-react";
 import { useAuth } from "../context/useAuth";
 import ProgressBar from "../components/ProgressBar";
 
-export default function SetupStep2Screen({ useAppState }) {
+export default function SetupStep2Screen() {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { tripId } = useAppState;
-  const [copied, setCopied] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
-
-  const link = tripId
-    ? `${window.location.origin}/join/${tripId}`
-    : `${window.location.origin}/join/(create trip first)`;
-
-  const copyInvite = async () => {
-    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600); }
-    catch { setCopied(false); }
-  };
 
   return (
     <section className="screen active screen-setup">
@@ -58,33 +45,10 @@ export default function SetupStep2Screen({ useAppState }) {
           <Crown size={18} weight="fill" color="var(--accent)" title="Trip leader" />
         </div>
 
-        <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-          You can share an invite link after your trip is created. For now, continue to set your preferences.
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 4px", lineHeight: 1.5 }}>
+          Your invite link appears as soon as the trip is created, on the deck
+          screen. Continue to set your preferences first.
         </p>
-
-        <button
-          className="btn btn-secondary btn-block"
-          style={{ marginTop: 4 }}
-          onClick={() => setInviteOpen((o) => !o)}
-        >
-          {copied ? "Link Copied to Clipboard!" : "Share Invite Link"}
-        </button>
-
-        {inviteOpen && (
-          <div style={{ marginTop: 10, padding: 14, background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
-              {tripId ? "Anyone with this link lands directly in your trip workspace." : "Complete setup first — the invite link will appear here."}
-            </div>
-            {tripId && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <input className="input" readOnly value={link} style={{ flex: 1, fontSize: 11, padding: "0 10px", height: 38, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)" }} />
-                <button className="btn btn-primary" style={{ minHeight: 38, padding: "0 14px", fontSize: 13 }} onClick={copyInvite}>
-                  {copied ? "Copied" : "Copy"}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       <button

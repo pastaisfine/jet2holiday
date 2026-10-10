@@ -35,7 +35,15 @@ const DEFAULT_STATE = {
   pipelineCompleted: false,
   pipelineDest: "",
   pipelineThinFallback: false,
+  // Why the deck fell back, when something is known. Paired with the flag
+  // above because "we fell back" and "here is what went wrong" are different
+  // claims, and only the second one needs the generator to have said so.
+  pipelineFailureCode: null,
   tripId: null,
+  // Whether this trip's leader has already been asked to invite their crew.
+  // Device-local and namespaced per trip by the storage key above, so a new
+  // trip asks again without any migration.
+  invitePromptDismissed: false,
 };
 
 function load() {

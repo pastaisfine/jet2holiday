@@ -11,6 +11,7 @@ import { supabase } from "../lib/supabase";
 import { CARD_DATA } from "../data/cards";
 import { normaliseStoredPreferences } from "../lib/preferenceProfile";
 import { addSwipedKey, buildSwipedKeys, partitionDeck } from "../lib/swipeDeck";
+import { describeDeckFailure, isThinDestination, CLIENT_FAILURE } from "../lib/deckFailure";
 import {
   analyzePreferences,
   savePreferenceSummary,
@@ -21,7 +22,16 @@ import {
   summaryCoversSwipes,
 } from "../services/preference";
 import { preloadImage } from "../services/imagePreloader";
-import { getTripDeckId, getUserSwipes } from "../services/tripService";
+import {
+  getTrip,
+  getTripDeckId,
+  getTripMembers,
+  getUserSwipes,
+  subscribeTripMembers,
+} from "../services/tripService";
+import InviteCrewDialog from "../components/InviteCrewDialog";
+import { buildInviteLink } from "../lib/inviteLink";
+import { shouldPromptForInvite, shouldRetireInvitePrompt } from "../lib/invitePrompt";
 
 const LISBON_FALLBACK = "Lisbon, Portugal";
 
@@ -92,6 +102,8 @@ export default function SwipeScreen({ useAppState }) {
     addedCards,
     tagged,
     pipelineThinFallback,
+    pipelineFailureCode,
+    invitePromptDismissed,
   } = useAppState;
   const pipeline = usePipeline();
   const preferenceId = profile?.id || profile?.username || "guest";
@@ -515,6 +527,56 @@ export default function SwipeScreen({ useAppState }) {
     })();
   }, [tripId, session?.user?.id, pipeline.phase, dest, preferences, addedCards, update, startDate, endDate]);
 
+  // Ask a lone leader to invite their crew.
+  //
+  // This cannot live on the setup screens: the trip row is only written at the
+  // end of step 3, so before this point there is no link to share. The deck is
+  // the first screen guaranteed to run after the trip exists, so it is where
+  // the question becomes answerable. It is deliberately not gated on the deck
+  // being ready -- the link is valid the moment the trip row lands, and waiting
+  // only delays the one moment the leader can actually act on.
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const dismissInvite = useCallback(() => {
+    setInviteOpen(false);
+    update({ invitePromptDismissed: true });
+  }, [update]);
+
+  useEffect(() => {
+    if (!tripId || !session?.user?.id) return undefined;
+    let cancelled = false;
+
+    (async () => {
+      const [trip, members] = await Promise.all([
+        getTrip(tripId),
+        getTripMembers(tripId).catch(() => []),
+      ]);
+      if (cancelled) return;
+
+      const prompt = shouldPromptForInvite({
+        tripId,
+        userId: session.user.id,
+        leaderId: trip?.leader_id,
+        members,
+        dismissed: invitePromptDismissed,
+      });
+      if (prompt) setInviteOpen(true);
+    })();
+
+    return () => { cancelled = true; };
+  }, [tripId, session?.user?.id, invitePromptDismissed]);
+
+  // A member joining retires the prompt without waiting for the leader to come
+  // back and reload -- by then they have a crew, so there is nothing left to
+  // ask. Recorded as a dismissal so it cannot reappear on the next visit.
+  useEffect(() => {
+    if (!tripId || !session?.user?.id) return undefined;
+
+    return subscribeTripMembers(tripId, async () => {
+      const members = await getTripMembers(tripId).catch(() => []);
+      if (shouldRetireInvitePrompt(members)) dismissInvite();
+    });
+  }, [tripId, session?.user?.id, dismissInvite]);
+
   // Ingest streamed deck rows into the card deck. Cards arrive already in UI
   // shape, so this is an append rather than a mapping step, and the deck grows
   // while the rest of the deck is still being generated.
@@ -551,18 +613,34 @@ export default function SwipeScreen({ useAppState }) {
     };
   }, [generatedCards, readyCardIds]);
 
-  // Q22: pipeline ended with <2 spots (or errored) → fall back to Lisbon hardcoded deck.
+  // Q22: the pipeline settled with nothing to show -> say what is actually known.
+  //
+  // The cause is never inferred from the card count. An empty deck means one of
+  // several very different things -- a thin destination, a storage fault, a
+  // request that never arrived, or a client reading a key the generator never
+  // wrote -- and only the server knows which. When it named one, it arrives as
+  // `errorCode` and is rendered as given; when it named none, this is an
+  // unknown and is reported as one. The previous version called every empty
+  // deck "limited photo-verified places found for {destination}", which
+  // blamed Johor for a backend bug that had generated twelve cards correctly.
   useEffect(() => {
     if (!dest || dest === LISBON_FALLBACK || pipelineThinFallback) return;
     const settled = pipeline.phase === "done" || pipeline.phase === "error";
     if (settled && generatedCards.length < 2) {
-      update({ pipelineThinFallback: true });
+      update({
+        pipelineThinFallback: true,
+        // A code the server already gave us outranks whatever we infer. Only a
+        // pipeline that reported success but delivered nothing leaves this
+        // unexplained, which is precisely the stale-deploy signature.
+        pipelineFailureCode: pipeline.errorCode || CLIENT_FAILURE.UNEXPLAINED_EMPTY,
+      });
     }
-  }, [dest, pipelineThinFallback, pipeline.phase, generatedCards.length, update]);
+  }, [dest, pipelineThinFallback, pipeline.phase, pipeline.errorCode, generatedCards.length, update]);
 
+  // Cards landing clears the banner, and with it any failure we were reporting.
   useEffect(() => {
     if (pipelineThinFallback && generatedCards.length >= 2) {
-      update({ pipelineThinFallback: false });
+      update({ pipelineThinFallback: false, pipelineFailureCode: null });
     }
   }, [pipelineThinFallback, generatedCards.length, update]);
 
@@ -866,10 +944,10 @@ return (
               gap: 8,
             }}
           >
-            <span style={{ color: "var(--accent)" }}>●</span>
-            <span>
-              Limited photo-verified places found for <strong>{dest}</strong>. Showing sample Lisbon deck.
+            <span style={{ color: isThinDestination(pipelineFailureCode) ? "var(--accent)" : "var(--nom)" }}>
+              ●
             </span>
+            <span>{describeDeckFailure(pipelineFailureCode, dest)}</span>
           </div>
         )}
 
@@ -1189,7 +1267,9 @@ return (
               </>
             )}
             {pipeline.error && pipeline.phase !== "generating" && (
-              <div style={{ color: "var(--nom)" }}>Couldn't generate spots — using fallback deck.</div>
+              <div style={{ color: "var(--nom)" }}>
+                {describeDeckFailure(pipeline.errorCode, dest)}
+              </div>
             )}
           </div>
         )}
@@ -1209,6 +1289,12 @@ return (
             </button>
           </div>
         </BottomSheet>
+
+        <InviteCrewDialog
+          open={inviteOpen}
+          link={buildInviteLink(tripId)}
+          onDismiss={dismissInvite}
+        />
       </section>
   );
 }

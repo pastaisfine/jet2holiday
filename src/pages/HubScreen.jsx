@@ -11,6 +11,7 @@ import { getTripPreferenceSummaries } from "../services/preference";
 import { useGroupPlan, loadGroupPlan, startGroupPlan } from "../services/groupPlan";
 import { ArrowSquareOut, Sparkle, WarningCircle } from "@phosphor-icons/react";
 import { CARD_DATA } from "../data/cards";
+import { buildInviteLink } from "../lib/inviteLink";
 
 const FALLBACK_CARD_IDS = new Set(CARD_DATA.map((c) => c.id));
 
@@ -241,7 +242,7 @@ export default function HubScreen({ useAppState }) {
   };
 
   // Copy invite link
-  const inviteLink = tripId ? `${window.location.origin}/join/${tripId}` : null;
+  const inviteLink = buildInviteLink(tripId);
   const [copied, setCopied] = useState(false);
   const copyLink = async () => {
     if (!inviteLink) return;
