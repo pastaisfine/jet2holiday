@@ -28,6 +28,7 @@ dist-ssr
 *.sw?
 .agents
 .agent
+.freebuff
 .opencode
 .claude
 .playwright-mcp
