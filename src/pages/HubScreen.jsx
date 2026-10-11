@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
-import { TASKS } from "../data/tasks";
 import { HOTELS, FLIGHTS } from "../data/travel";
 import ProgressBar from "../components/ProgressBar";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { fmtDateRange, dayCount } from "../utils/date";
 import { getTripMembers, getTripSwipes, subscribeTripMembers, subscribeTripSwipes } from "../services/tripService";
+import { getTripTasks, subscribeTripTasks } from "../services/tasks";
 import { getTripPreferenceSummaries } from "../services/preference";
 import { useGroupPlan, loadGroupPlan, startGroupPlan } from "../services/groupPlan";
 import { ArrowSquareOut, Sparkle, WarningCircle } from "@phosphor-icons/react";
@@ -158,11 +158,20 @@ export default function HubScreen({ useAppState }) {
   const [members, setMembers] = useState([]);
   const [swipes, setSwipes] = useState([]);
   const [summaries, setSummaries] = useState([]);
+  const [tasks, setTasks] = useState([]);
 
   const loadMembers = useCallback(async () => {
     if (!tripId) return;
     const m = await getTripMembers(tripId);
     setMembers(m);
+  }, [tripId]);
+
+  const loadTasks = useCallback(async () => {
+    if (!tripId) {
+      setTasks([]);
+      return;
+    }
+    setTasks(await getTripTasks(tripId));
   }, [tripId]);
 
   const loadSwipes = useCallback(async () => {
@@ -182,15 +191,17 @@ export default function HubScreen({ useAppState }) {
     loadGroupPlan(tripId);
     loadMembers();
     loadSwipes();
-  }, [tripId, loadMembers, loadSwipes]);
+    loadTasks();
+  }, [tripId, loadMembers, loadSwipes, loadTasks]);
 
   // Realtime subscriptions
   useEffect(() => {
     if (!tripId) return;
     const unsubMembers = subscribeTripMembers(tripId, loadMembers);
     const unsubSwipes = subscribeTripSwipes(tripId, loadSwipes);
-    return () => { unsubMembers(); unsubSwipes(); };
-  }, [tripId, loadMembers, loadSwipes]);
+    const unsubTasks = subscribeTripTasks(tripId, loadTasks);
+    return () => { unsubMembers(); unsubSwipes(); unsubTasks(); };
+  }, [tripId, loadMembers, loadSwipes, loadTasks]);
 
   // Compute who has swiped based on real swipes data
   const swipedUserIds = useMemo(() => {
@@ -568,12 +579,17 @@ export default function HubScreen({ useAppState }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Shared tasks</h3>
             <span style={{ fontSize: 12, fontWeight: 600, background: "var(--bg)", color: "var(--fg)", padding: "4px 10px", borderRadius: 999, border: "1px solid var(--border)" }}>
-              {TASKS.filter(t => t.status === "done").length} / {TASKS.length}
+              {tasks.filter(t => t.status === "done").length} / {tasks.length}
             </span>
           </div>
 
+          {tasks.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)", padding: "14px 0" }}>
+              No tasks yet. Ask the agent on the Tasks screen to create some.
+            </div>
+          ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {TASKS.map(task => {
+            {tasks.map(task => {
               const isDone = task.status === "done";
               return (
                 <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0" }}>
@@ -588,10 +604,14 @@ export default function HubScreen({ useAppState }) {
                   <div style={{ flex: 1, textDecoration: isDone ? "line-through" : "none", color: isDone ? "var(--muted)" : "var(--fg)", fontSize: 15, fontWeight: isDone ? 400 : 500 }}>
                     {task.title}
                   </div>
+                  {task.assignedToName && (
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{task.assignedToName}</div>
+                  )}
                 </div>
               );
             })}
           </div>
+          )}
 
           {/* 1. Who's Swiped Section — Real members */}
           <section style={cardStyle}>

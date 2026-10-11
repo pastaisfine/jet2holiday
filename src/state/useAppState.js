@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
 import { CARD_DATA } from "../data/cards";
-import { TASKS } from "../data/tasks";
 
 const LS_KEY = "tripder-state-v1";
 
@@ -27,7 +26,6 @@ const DEFAULT_STATE = {
   carRental: null,
   styleName: "",
   preferenceProfiles: {},
-  tasks: TASKS,
   // Day currently open on the plan screen. The plan itself lives in Supabase
   // (trip_plans) so every member reads the same itinerary; only the UI cursor
   // is device-local.
@@ -56,8 +54,13 @@ function load() {
           ? { ...card, img: "/images/alfama.jpg" }
           : card,
       );
-      const tasks = s.tasks && s.tasks.length > 0 ? s.tasks : TASKS;
-      return { ...DEFAULT_STATE, ...s, addedCards, tasks };
+      // `tasks` used to live here, seeded from a hardcoded Lisbon list, and
+      // `s.tasks.length > 0 ? s.tasks : TASKS` meant deleting every task
+      // resurrected the mock board on the next load. Tasks are now rows in
+      // Supabase (see services/tasks.js); the stale key is dropped so it
+      // cannot be picked up by a future reader who assumes it is live.
+      delete s.tasks;
+      return { ...DEFAULT_STATE, ...s, addedCards };
     }
   } catch {}
   return { ...DEFAULT_STATE };
@@ -249,11 +252,11 @@ export function useAppState() {
   }, []);
 
   const resetTrip = useCallback(() => {
-    setState((prev) => {
-      const next = {
-        ...DEFAULT_STATE,
-        tasks: prev.tasks,
-      };
+    setState(() => {
+      // Tasks used to be carried across a reset while everything else was
+      // cleared, which is how a new trip inherited the previous one's board.
+      // They live in Supabase now, keyed by trip, so there is nothing to carry.
+      const next = { ...DEFAULT_STATE };
       save(next);
       return next;
     });
@@ -354,57 +357,6 @@ export function useAppState() {
     });
   }, []);
 
-  const addTasks = useCallback((taskArray, createdBy) => {
-    setState((prev) => {
-      const newTasks = taskArray.map((t) => ({
-        id: crypto.randomUUID(),
-        title: String(t.title).trim(),
-        description: t.description ? String(t.description).trim() : "",
-        status: "open",
-        assignedTo: null,
-        createdBy: createdBy || "Someone",
-        createdAt: new Date().toISOString(),
-      }));
-      const next = { ...prev, tasks: [...prev.tasks, ...newTasks] };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const acceptTask = useCallback((taskId, userName) => {
-    setState((prev) => {
-      const next = {
-        ...prev,
-        tasks: prev.tasks.map((t) =>
-          t.id === taskId ? { ...t, status: "assigned", assignedTo: userName } : t
-        ),
-      };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const completeTask = useCallback((taskId) => {
-    setState((prev) => {
-      const next = {
-        ...prev,
-        tasks: prev.tasks.map((t) =>
-          t.id === taskId ? { ...t, status: "done" } : t
-        ),
-      };
-      save(next);
-      return next;
-    });
-  }, []);
-
-  const removeTask = useCallback((taskId) => {
-    setState((prev) => {
-      const next = { ...prev, tasks: prev.tasks.filter((t) => t.id !== taskId) };
-      save(next);
-      return next;
-    });
-  }, []);
-
   const allCards = useMemo(() => [...CARD_DATA, ...state.addedCards], [state.addedCards]);
 
   const reasonCount = useMemo(
@@ -438,9 +390,5 @@ export function useAppState() {
     savePreferenceProfile,
     setTripId,
     loadTrip,
-    addTasks,
-    acceptTask,
-    completeTask,
-    removeTask,
   };
 }

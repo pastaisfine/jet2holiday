@@ -28,15 +28,12 @@
     },
     "src/pages/SwipeScreen.jsx": {
       "react(set-state-in-effect)": 1
+    },
+    "src/pages/TasksScreen.jsx": {
+      "react(set-state-in-effect)": 1
     }
   },
   "cosmetic": {
-    "src/services/taskAgent.js": {
-      "eslint(no-unused-vars)": 2
-    },
-    "supabase/functions/task-agent/index.ts": {
-      "eslint(no-unused-vars)": 3
-    },
     "src/pages/StyleScreen.jsx": {
       "eslint(no-unused-vars)": 5
     },

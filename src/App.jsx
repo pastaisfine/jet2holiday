@@ -144,7 +144,11 @@ function Shell() {
     "/style":           <StyleScreen useAppState={appState} />,
     "/plan":            <PlanScreen useAppState={appState} />,
     "/group":           <GroupScreen useAppState={appState} />,
-    "/tasks":           <TasksScreen useAppState={appState} />,
+    // The board is shared state keyed on auth.uid() and scoped by trip
+    // membership, so an anonymous visitor can neither read nor write it. The
+    // guard makes that a redirect instead of an empty screen full of buttons
+    // that are guaranteed to fail.
+    "/tasks":           <RequireAuth><TasksScreen useAppState={appState} /></RequireAuth>,
     "/login":           <LoginScreen />,
     "/register":        <RegisterScreen />,
     "/profile":         <ProfileScreen useAppState={appState} />,
