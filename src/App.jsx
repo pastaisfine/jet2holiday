@@ -44,7 +44,7 @@ const CHROME = {
   "/register":         { header: true, invert: false, back: "/login", backLabel: "Sign in", tabs: false },
   "/profile":          { header: true, invert: false, back: "/hub", backLabel: "Trip", tabs: true, active: "profile" },
   "/forgot-password":  { header: true, invert: false, back: "/login", backLabel: "Sign in", tabs: false },
-  "/reset-password":   { header: true, invert: false, tabs: false },
+  "/reset-password":   { header: true, invert: false, back: "/forgot-password", backLabel: "Request link", tabs: false },
   "/join/:tripId":     { header: false, tabs: false },
 };
 
@@ -129,7 +129,7 @@ function Shell() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  const AUTH_PATHS = ["/setup/step1", "/setup/step2", "/setup/step3", "/login", "/register", "/forgot-password"];
+  const AUTH_PATHS = ["/setup/step1", "/setup/step2", "/setup/step3", "/login", "/register", "/forgot-password", "/reset-password"];
 
   const screens = {
     "/":                <RootRedirect />,

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "../lib/supabase";
+import { buildResetRedirect } from "../lib/resetLink";
 import { AuthContext } from "./auth-state";
 
 export function AuthProvider({ children }) {
@@ -15,7 +16,10 @@ export function AuthProvider({ children }) {
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) {
-          console.warn("Auth getSession notice:", error.message);
+          // A rejected recovery token surfaces here as an error, and it is the
+          // difference between "slow" and "this link is spent" -- so log it as a
+          // failure rather than burying it at notice level.
+          console.error("Auth getSession failed:", error.code, error.message);
         }
         if (mounted) {
           setSession(data?.session ?? null);
@@ -192,9 +196,16 @@ export function AuthProvider({ children }) {
   }, [user, fetchProfile]);
 
   const sendPasswordReset = useCallback(async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+    // Pin the link to the configured site rather than whatever origin the form
+    // happened to be submitted from. Supabase silently ignores a redirect URL
+    // that is not on its allowlist and falls back to the project Site URL, so a
+    // preview deployment asking for a reset would otherwise mail the user a
+    // link to wherever the project is configured to send.
+    const redirectTo = buildResetRedirect(
+      import.meta.env.VITE_SITE_URL,
+      typeof window !== "undefined" ? window.location.origin : "",
+    );
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) throw error;
   }, []);
 

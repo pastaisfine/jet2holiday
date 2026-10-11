@@ -10,6 +10,7 @@ export const AuthContext = createContext({
   signOut: async () => { },
   updateProfile: async () => { },
   updatePassword: async () => { },
+  sendPasswordReset: async () => { },
   savePreferences: async () => { },
   fetchProfile: async () => { },
 });
