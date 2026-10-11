@@ -76,7 +76,7 @@ export default function HubScreen({ useAppState }) {
   };
 
 
-  const getFlightBookingUrl = (flightName) => {
+  const getFlightBookingUrl = (flight) => {
   const search = flight?.searchDetails;
 
   // Fallback for flights selected before search details were saved.
