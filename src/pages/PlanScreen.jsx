@@ -365,6 +365,11 @@ useEffect(() => {
   const safeDayIndex = Math.min(activeDayIndex, Math.max(0, days.length - 1));
   const day = days[safeDayIndex] || null;
   const currentDayEditable = day ? canEditDay(day.day_index) : false;
+  // Switching walk/drive is a routing preference, not an agent decision: it
+  // re-times the day through the same Mapbox + scheduler path and costs no
+  // rebuild budget, so it is deliberately not gated on the rebuild cap the way
+  // stop edits are.
+  const canSwitchTransport = !confirmed && Boolean(isLeader);
   const unassigned = useMemo(() => validated?.unassigned || [], [validated]);
   // Until the user picks a tab, the plan opens on the day they last viewed.
   const activeTab = tab === "day" ? `day-${safeDayIndex}` : tab;
@@ -743,7 +748,7 @@ useEffect(() => {
   };
 
   const setTransportMode = (mode) => {
-    if (!day || !validated || day.transport_mode === mode || !currentDayEditable) return;
+    if (!day || !validated || day.transport_mode === mode || !canSwitchTransport || busy) return;
     applyStops(day.day_index, day.stops, { keepOrder: true, dayOverride: { ...day, transport_mode: mode } });
   };
 
@@ -1112,8 +1117,22 @@ useEffect(() => {
                     )}
                   </div>
                   <div className="plan-mode-toggle" role="group" aria-label="Transport mode">
-                    <button className={day.transport_mode === "walking" ? "sel" : ""} disabled={!currentDayEditable} onClick={() => setTransportMode("walking")}>Walk</button>
-                    <button className={day.transport_mode === "driving" ? "sel" : ""} disabled={!currentDayEditable} onClick={() => setTransportMode("driving")}>Drive</button>
+                    <button
+                      className={day.transport_mode === "walking" ? "sel" : ""}
+                      disabled={!canSwitchTransport || busy}
+                      title={canSwitchTransport ? "Route this day on foot" : "Only the trip creator can change the transport mode"}
+                      onClick={() => setTransportMode("walking")}
+                    >
+                      Walk
+                    </button>
+                    <button
+                      className={day.transport_mode === "driving" ? "sel" : ""}
+                      disabled={!canSwitchTransport || busy}
+                      title={canSwitchTransport ? "Route this day by car" : "Only the trip creator can change the transport mode"}
+                      onClick={() => setTransportMode("driving")}
+                    >
+                      Drive
+                    </button>
                   </div>
                 </div>
 
