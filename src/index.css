@@ -58,6 +58,14 @@
   --on-light: oklch(99% 0.005 101.5);
   --on-light-ink: oklch(19.54% 0.0182 137.9);
 
+  /* ── live-location pin ──
+     Painted over the map canvas rather than a themed surface, so it must read
+     the same in both themes and is deliberately not overridden in the
+     [data-theme="dark"] block. */
+  --geo: #2878ff;
+  --geo-pulse: rgba(40, 120, 255, 0.25);
+  --shadow-pin: 0 1px 5px rgba(0, 0, 0, 0.35);
+
   /* ── gradients (natural ambient washes, no artificial neon) ── */
   --grad-hero: linear-gradient(135deg, oklch(96.5% 0.018 113.8) 0%, oklch(94% 0.022 113.8) 100%);
   --grad-soft: linear-gradient(140deg, var(--surface) 0%, oklch(97% 0.015 113.8) 100%);
