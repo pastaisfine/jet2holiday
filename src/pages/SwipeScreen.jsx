@@ -1071,7 +1071,7 @@ return (
           </div>
         )}
 
-        {unswiped.length > 0 && (
+        {!locked && unswiped.length > 0 && (
           <div className="sw-actions">
             <button className="sw-btn no" onClick={() => handleVerdict("no")} aria-label="Skip">
               <XIcon />
