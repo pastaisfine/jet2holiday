@@ -466,6 +466,10 @@
   color: var(--fg);
 }
 
+[data-theme="dark"] .auth-header .splash-mark{
+  color: #fff !important;
+}
+
 .splash-mark b {
   color: var(--accent);
 }
