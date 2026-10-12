@@ -102,34 +102,30 @@ Evidence:
 ![Mentor Session 4](./images/MentorSession4.png)
 
 # 3. Design & Prototype
-**UI Prototype:** [UI Prototype](https://tripder.vercel.app/)
+**UI Prototype:** [UI Prototype](https://jet2holiday-ten.vercel.app/ )
 
-**1. Crew Onboarding & Role Assignment**
-![Crew Onboarding & Role Assignment](./images/KeyScreen1.png)
+**1. Crew Onboarding**
+![Crew Onboarding](./images/Invite_members.png)
 **Interaction:** Group leaders set up the trip and invite members through a shared link. The leader role can be passed to other members.
 
 **2. Granular Preference Capture**
-![Granular Preference Capture](./images/KeyScreen2.png)
+![Granular Preference Capture](./images/Trip_setup3.png)
 **Interaction:** Each member enters personal preferences and constraints, including interests, budget, dietary needs, and travel pace. This gives jet2holiday’s AI a complete picture of the group before generating a plan, helping surface potential conflicts early. 
 
 **3. Card Swipe**
-![Card Swipe](./images/KeyScreen3.png)
+![Card Swipe](./images/Swipe_page.png)
 **Interaction:** Members swipe left or right on local spots and activities. The AI combines both the choice and reasoning in real time to identify shared interests, explain disagreements, and find options that better fit the group. These preference insights can also be retained to improve recommendations for future trips.
 
 **4. Shared Plan Map Visualization: See the Whole Trip, Not Just a List**
-![Shared Plan Map Visualization: See the Whole Trip, Not Just a List](./images/KeyScreen4.png)
+![Shared Plan Map Visualization: See the Whole Trip, Not Just a List](./images/Trip_plan2.png)
 **Interaction:** Instead of viewing the itinerary as a long list of places, the group sees the entire daily route on a shared map, with destinations connected in geographic order. This lets members spot backtracking, unrealistic routes, and distant locations before agreeing on the plan.
 
-**5. AI Itinerary Styles & Customisation: One Trip, Multiple Ways to Travel**
-![AI Itinerary Styles & Customisation: One Trip, Multiple Ways to Travel](./images/KeyScreen5.png)
-**Interaction:** Instead of forcing the group to agree on one plan immediately, jet2holiday generates different versions of the same trip — such as Balanced, Food-first, and Slower pace. Members can vote, rearrange activities, and adjust suggestions, making compromise easier without starting the itinerary from scratch.
-
-**6. Task Agent & Board**
-![Task Agent & Board](./images/KeyScreen6.png)
+**5. Task Agent & Board**
+![Task Agent & Board](./images/Tasks_page.png)
 **Interaction:** When members type or speak natural-language messages containing single or multiple tasks (e.g., "We haven't booked the hotel yet"), the Task Agent instantly parses and converts them into trackable action items. The group can clearly see what needs to be done, who is in charge, and what's still pending—eliminating critical planning details buried in messy WhatsApp chats. Planning roles can then be assigned to different members, so responsibilities are shared from day one instead of falling on one person.
 
-**7. Search & filter stay,flight**
-![Search & filter stay,flight](./images/KeyScreen7.png)
+**6. Search & filter stay,flight**
+![Search & filter stay,flight](./images/Set_stay.png)
 **Interaction:** Instead of switching between multiple travel websites while planning, members can search, filter, and compare stays and flights directly within the itinerary workflow. Options can be narrowed by price, category and ratings, making it easier to turn the group’s decisions into a practical trip. 
 
 # 4. What Makes It Different
@@ -208,10 +204,10 @@ We use Supabase as our backend platform to manage user authentication and store 
 
 **3. Preference Agent**
 
-**Input:** User profile, swipe preferences, and swipe reasons
+**Input:** User profile, and swipe preferences
 
 **Function:**
-• Analyse each user's likes, dislikes, and stated reasons about the place.
+• Analyse each user's likes and dislikes.
 • Identify individual preferences and constraints.
 • Generate a personal preference summary that can be used by the Group Planner Agent.
 
@@ -237,8 +233,8 @@ We use Supabase as our backend platform to manage user authentication and store 
 • Allow group members to assign tasks, update their status, and track outstanding responsibilities.
 
 
- # 6. User Manual
- # 1. Registering a New Account**
+ # 6. Guidelines
+ # 1. Registering a New Account
 If you are using jet2holiday for the first time, follow these steps to create an account : 
 1. Navigate to the Login page of the jet2holiday website https://jet2holiday-ten.vercel.app/
 ![Login Page](./images/Login_page.png)
@@ -315,10 +311,12 @@ Upon completing trip setup, you will be directed to the card swiping page. A mes
 # 6. Build the group plan
 ![Plan page](./images/Plan_page.png)
                                  03 Plan Page
+
 **Only the leader is allowed to click the Build the group plan button.**
 ![Trip plan 1](./images/Trip_plan1.png)
 ![Trip plan 2](./images/Trip_plan2.png)
                                    Trip Plan
+
 Once the group has finished swiping, jet2holiday will direct you to the 03 Plan page. The Plan page lets you review the itinerary day by day, vote on each day, and confirm the final plan. Follow these steps:
 ![Summary on Trip Screen](./images/Trip_summary.png)
 1. Click Show my location to see where you are on the map.
@@ -368,6 +366,7 @@ The Trip page is the home page of your group trip. It gives you a summary of the
                               After clicking Set stays→ button
 ![Set Flights](./images/Set_flight.png)
                              After clicking Set flights→ button
+
 ![After clicking](./images/After_clicking.png)
                                      After selecting 
 5. After selecting preferred stay and flight, you can click **Book now!** button to make booking manually(you will be directed to google travel website).
