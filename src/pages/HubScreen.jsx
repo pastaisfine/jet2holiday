@@ -30,7 +30,7 @@ export default function HubScreen({ useAppState }) {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const {
-    likes, skips, reasonCount, styleSeen, styleName, dest, startDate, endDate,
+    likes, skips, styleSeen, styleName, dest, startDate, endDate,
     hotel, flight, tripId, addedCards
   } = useAppState;
   const { plan, phase: planPhase, error: planError } = useGroupPlan();
@@ -142,7 +142,7 @@ export default function HubScreen({ useAppState }) {
   const generatedCount = (addedCards || []).filter((c) => !FALLBACK_CARD_IDS.has(c.id)).length;
   const deckCount = generatedCount > 0 ? generatedCount : CARD_DATA.length;
   const swipePrompt = hasTripDates
-    ? `${deckCount} places, ~${Math.max(2, Math.round(deckCount / 5))} minutes. Swipe right for want, left for skip. Add a reason and the AI learns.`
+    ? `${deckCount} places, ~${Math.max(2, Math.round(deckCount / 5))} minutes. Swipe right for want, left for skip — the AI learns from the pattern.`
     : `${deckCount} sample places for now. Add your dates and we'll find the right number for your trip.`;
 
   const validated = plan?.validated_plan || null;
@@ -451,7 +451,7 @@ export default function HubScreen({ useAppState }) {
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>{mineDone ? "Your preferences saved" : "Your turn to swipe"}</h3>
             <div style={{ marginTop: 6, fontSize: 14, color: mineDone ? "var(--muted)" : "var(--surface)", lineHeight: 1.4 }}>
               {mineDone
-                ? `${displayLikes} liked, ${displaySkips} skipped, ${reasonCount} reasons logged. We're tuning the itinerary to your taste.`
+                ? `${displayLikes} liked, ${displaySkips} skipped. We're tuning the itinerary to your taste.`
                 : swipePrompt}
             </div>
           </div>

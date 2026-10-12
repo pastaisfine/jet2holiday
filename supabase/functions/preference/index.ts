@@ -22,7 +22,6 @@ const CATEGORIES = [
 type Swipe = {
   card_name?: string;
   direction?: string;
-  reasons?: string[];
   // NULL in the DB and here: a user-added place has no category anywhere in
   // the system, so those swipes count toward totals but not the category tally.
   category?: string | null;
@@ -145,12 +144,6 @@ Deno.serve(async (req: Request) => {
           swipe.direction === "like" || swipe.direction === "skip"
             ? swipe.direction
             : "unknown",
-        reasons: Array.isArray(swipe.reasons)
-          ? swipe.reasons
-            .filter((reason) => typeof reason === "string")
-            .map((reason) => reason.trim())
-            .filter(Boolean)
-          : [],
         // An unrecognised category becomes null rather than being passed
         // through: a value the model has not been told about is worse than a
         // gap it knows to discount.
@@ -185,52 +178,13 @@ Deno.serve(async (req: Request) => {
       (swipe) => swipe.category === null
     ).length;
 
-    // Reason frequency, computed the same way as the category tally: the model
-    // cannot count reliably, and an invented quote is worse than a missing one.
-    //
-    // A reason counts once per swipe it appeared in, so a traveller who ticked
-    // the same chip on five places has used it five times. Only freestanding
-    // text is quoted back -- it is the words they chose rather than a label
-    // they were handed, which is what makes them worth showing.
-    const reasonTallyFor = (direction: "like" | "skip") => {
-      const counts = new Map<string, number>();
-
-      for (const swipe of normalizedSwipes) {
-        if (swipe.direction !== direction) continue;
-
-        for (const reason of swipe.reasons) {
-          counts.set(reason, (counts.get(reason) || 0) + 1);
-        }
-      }
-
-      return [...counts.entries()]
-        .map(([reason, count]) => ({ reason, count }))
-        .sort(
-          (a, b) => b.count - a.count || a.reason.localeCompare(b.reason)
-        )
-        .slice(0, 6);
-    };
-
-    const reasonTally = {
-      liked: reasonTallyFor("like"),
-      skipped: reasonTallyFor("skip"),
-    };
-
-    // Swipes that carried at least one reason, not the total number of reasons.
-    // The client phrases this as "N with a reason", which cannot exceed the
-    // swipe count -- a raw chip total could, and would read as indecision.
-    const reasonedSwipeCount = normalizedSwipes.filter(
-      (swipe) => swipe.reasons.length > 0
-    ).length;
-
     const systemInstruction = `
 You are the Preference Agent for a group travel planning application.
 
 Your job is to analyse ONE traveller's:
 1. profile preferences,
 2. initial travel preferences,
-3. swipe decisions,
-4. reasons behind those swipe decisions.
+3. swipe decisions and the categories behind them.
 
 Identify the traveller's actual travel interests, dislikes, priorities,
 preferences and constraints.
@@ -256,8 +210,9 @@ Output schema:
 }
 
 Rules:
-- Use evidence from both the initial preferences and swipe reasons.
-- Swipe reasons are signals, not absolute truth.
+- Use evidence from both the initial preferences and the category breakdown of
+  the swipe decisions.
+- A single swipe is a weak signal; the categories behind them are stronger.
 - styleName should be a memorable 2–4 word travel identity.
 - tagline should be a one-sentence description explaining why this style fits the traveller.
 - Repeated patterns should have more weight than a single swipe.
@@ -559,11 +514,6 @@ Analyse this traveller's preferences and return the required JSON object.
           // without re-running the analysis.
           categoryTally,
           uncategorizedCount,
-          // Swipes that carried a reason, and which reasons those were. The
-          // client renders these verbatim, so they have to be the traveller's
-          // own words rather than a paraphrase.
-          reasonedSwipeCount,
-          reasonTally,
         },
       }),
       {

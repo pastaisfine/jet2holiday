@@ -10,7 +10,6 @@ const DEFAULT_STATE = {
   idx: 0,
   likes: 0,
   skips: 0,
-  tagged: {},
   addedCards: [],
   // Which deck `addedCards` belongs to. Without it the local card list leaks
   // across trips: a member who opens another trip's link keeps the previous
@@ -60,6 +59,10 @@ function load() {
       // Supabase (see services/tasks.js); the stale key is dropped so it
       // cannot be picked up by a future reader who assumes it is live.
       delete s.tasks;
+      // `tagged` held per-swipe reason chips that only ever existed in
+      // localStorage. Reasons are gone from the product; the key is dropped so
+      // the blob does not keep growing for the life of the install.
+      delete s.tagged;
       return { ...DEFAULT_STATE, ...s, addedCards };
     }
   } catch {}
@@ -150,15 +153,24 @@ export function useAppState() {
     [],
   );
 
-  const saveReason = useCallback((cardId, dir, reasons) => {
-    setState((prev) => {
-      const tagged = { ...prev.tagged };
-      if (reasons.length) tagged[cardId] = { dir, reasons };
-      const next = { ...prev, tagged };
-      save(next);
-      return next;
-    });
-  }, []);
+  // Undoes a verdict, the exact counterpart of `swipeCard`. Counters are
+  // clamped at zero because hydration rebuilds them from the database and a
+  // localStorage value that predates this session can be behind it.
+  const unswipeCard = useCallback(
+    (dir) => {
+      setState((prev) => {
+        const next = {
+          ...prev,
+          idx: Math.max(0, prev.idx - 1),
+          likes: dir === "yes" ? Math.max(0, prev.likes - 1) : prev.likes,
+          skips: dir === "no" ? Math.max(0, prev.skips - 1) : prev.skips,
+        };
+        save(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const setActiveDayIndex = useCallback((index) => {
     setState((prev) => {
@@ -359,21 +371,16 @@ export function useAppState() {
 
   const allCards = useMemo(() => [...CARD_DATA, ...state.addedCards], [state.addedCards]);
 
-  const reasonCount = useMemo(
-    () => Object.values(state.tagged).reduce((sum, t) => sum + (t.reasons?.length || 0), 0),
-    [state.tagged],
-  );
   const finished = state.idx >= allCards.length;
 
   return {
     ...state,
     allCards,
     finished,
-    reasonCount,
     update,
     updateTrip,
     swipeCard,
-    saveReason,
+    unswipeCard,
     selectHotel,
     selectFlight,
     selectCarRental,

@@ -1,12 +1,55 @@
-import { motion, useMotionValue, useTransform } from "framer-motion";
-import { useRef } from "react";
+import { motion, useMotionValue, useTransform, animate } from "framer-motion";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 
-export default function SwipeCard({ card, onVerdict, onDetail, stacked }) {
+// The verdict badge is fully opaque well before the commit threshold, so it is
+// already decided by the time the card is allowed to leave.
+const BADGE_FULLY_VISIBLE = 60;
+
+// How far past the edge the card travels on its way out. Enough to clear the
+// viewport so the exit is not visible behind the deck.
+const FLY_OUT_DISTANCE = 640;
+
+/**
+ * One card in the deck.
+ *
+ * The parent drives the verdict, but the card owns the motion: it exposes
+ * `flyOut` so a button press and a gesture release leave by the same path.
+ * Sequencing the database write behind that animation is the parent's job.
+ */
+const SwipeCard = forwardRef(function SwipeCard(
+  { card, onVerdict, onDetail, stacked, disabled },
+  ref
+) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-300, 300], [-18, 18]);
-  const yesOpacity = useTransform(x, [0, 120], [0, 1]);
-  const noOpacity = useTransform(x, [-120, 0], [1, 0]);
+  const yesOpacity = useTransform(x, [0, BADGE_FULLY_VISIBLE], [0, 1]);
+  const noOpacity = useTransform(x, [-BADGE_FULLY_VISIBLE, 0], [1, 0]);
   const dragShift = useRef(0);
+  const flyingOut = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    /**
+     * Carries the card off screen in `dir` and resolves once it is out of the
+     * way, so the caller can commit the verdict at the moment the card leaves
+     * rather than the moment it is dismissed. Resolves immediately if a fly-out
+     * is already running or has finished, which keeps a fast second tap from
+     * starting a second animation.
+     */
+    flyOut(dir) {
+      if (flyingOut.current) return Promise.resolve();
+      flyingOut.current = true;
+
+      const target = dir === "yes" ? FLY_OUT_DISTANCE : -FLY_OUT_DISTANCE;
+      const controls = animate(x, target, {
+        type: "spring",
+        stiffness: 260,
+        damping: 30,
+        velocity: dir === "yes" ? 900 : -900,
+      });
+
+      return controls.finished.catch(() => {});
+    },
+  }));
 
   const transform = stacked
     ? `translateY(${stacked * 10}px) scale(${1 - stacked * 0.035})`
@@ -16,22 +59,30 @@ export default function SwipeCard({ card, onVerdict, onDetail, stacked }) {
     <motion.div
       className={`swcard ${stacked ? `back${stacked}` : ""}`}
       style={{ x, rotate, zIndex: 30 - (stacked || 0), transform }}
-      drag={stacked === 0 ? "x" : false}
+      drag={stacked === 0 && !disabled ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.7}
       onDragEnd={(_, info) => {
         const dx = info.offset.x;
         const vel = info.velocity.x;
         const fast = Math.abs(vel) > 500;
+
+        // Cleared here as well as in onClick: a drag that falls short of the
+        // threshold springs the card home, and the stale offset would otherwise
+        // swallow the next tap that was meant to open the detail sheet.
         dragShift.current = dx;
+
         if (Math.abs(dx) > 84 || (fast && Math.abs(dx) > 34)) {
           onVerdict(dx > 0 ? "yes" : "no");
         } else {
           x.set(0);
+          dragShift.current = 0;
         }
       }}
       onClick={() => {
-        if (Math.abs(dragShift.current) < 8 && stacked === 0) onDetail();
+        if (Math.abs(dragShift.current) < 8 && stacked === 0 && !flyingOut.current) {
+          onDetail();
+        }
         dragShift.current = 0;
       }}
     >
@@ -74,7 +125,9 @@ export default function SwipeCard({ card, onVerdict, onDetail, stacked }) {
       </div>
     </motion.div>
   );
-}
+});
+
+export default SwipeCard;
 
 const chipInline = {
   background: "rgba(255,255,255,.22)",

@@ -57,7 +57,6 @@ export default function ProfileScreen({ useAppState }) {
   const {
   likes = 0,
   skips = 0,
-  reasonCount = 0,
   styleName,
   resetTrip,
   startNewTrip,
@@ -137,11 +136,17 @@ export default function ProfileScreen({ useAppState }) {
     navigate("/setup/step1");
   };
 
+  // The RPC rather than a blanket `delete().eq("user_id", ...)`. The preferences
+  // lock trigger fires per row and raises on the first locked trip, which aborts
+  // the whole statement -- so one locked trip would roll back the unlocked trips
+  // as well, and this account would silently keep everything. reset_user_swipes
+  // is SECURITY DEFINER and takes no argument, so it can only ever erase the
+  // caller's own rows.
   const handleResetEverything = async () => {
     setStartOverBusy(true);
     try {
       if (user?.id) {
-        const { error } = await supabase.from("swipes").delete().eq("user_id", user.id);
+        const { error } = await supabase.rpc("reset_user_swipes");
         if (error) console.warn("Failed to delete swipe history:", error.message);
       }
     } finally {
@@ -381,7 +386,6 @@ export default function ProfileScreen({ useAppState }) {
             )}
             <span className="chip">{likes} Likes</span>
             <span className="chip">{skips} Skips</span>
-            <span className="chip">{reasonCount} Reasons</span>
           </div>
         </div>
 

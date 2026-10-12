@@ -16,7 +16,6 @@ import {
   toLegacyTally,
   topCategoryFromTally,
   toEvidenceLine,
-  toReasonHighlights,
   toIdealDay,
   toGroupInsight,
   resolveStyleName,
@@ -47,8 +46,6 @@ function fromRow(row) {
     metadata: {
       swipeCount: row.swipe_count,
       categoryTally: row.category_tally,
-      reasonTally: row.reason_tally,
-      reasonedSwipeCount: row.reasoned_swipe_count,
     },
   };
 }
@@ -228,14 +225,8 @@ export default function StyleScreen({ useAppState }) {
     () =>
       toEvidenceLine({
         swipeCount: metadata.swipeCount || 0,
-        reasonedSwipeCount: metadata.reasonedSwipeCount || 0,
       }),
-    [metadata.swipeCount, metadata.reasonedSwipeCount]
-  );
-
-  const reasonHighlights = useMemo(
-    () => toReasonHighlights(metadata.reasonTally),
-    [metadata.reasonTally]
+    [metadata.swipeCount]
   );
 
   const idealDay = useMemo(
@@ -265,9 +256,6 @@ export default function StyleScreen({ useAppState }) {
   const priorities = summary.priorities || [];
   const hasPreferences =
     preferences && (preferences.completed || preferences.skipped);
-  const hasReasons =
-    reasonHighlights.liked.length > 0 ||
-    reasonHighlights.skipped.length > 0;
 
   return (
     <section className="screen active spiral-screen spiral-screen--style">
@@ -348,46 +336,9 @@ export default function StyleScreen({ useAppState }) {
           disposable after -- and because on a generated trip it can be thin, so
           a collapsed section sets the right expectation before it is opened.
         */}
-        {(reasoning.length > 0 || dislikes.length > 0 || hasReasons) && (
+        {(reasoning.length > 0 || dislikes.length > 0) && (
           <details className="bento-card evidence-card">
             <summary className="section-title">Why we learned this</summary>
-
-            {/*
-              The traveller's own words, not the agent's paraphrase of them. The
-              reason chips are the differentiator this product has over a
-              category grid, so showing what was actually chosen is the one thing
-              here that a bare percentage cannot substitute for.
-            */}
-            {hasReasons && (
-              <>
-                {reasonHighlights.liked.length > 0 && (
-                  <>
-                    <div className="subhead">
-                      You chose places because
-                    </div>
-                    <div className="reasonchips">
-                      {reasonHighlights.liked.map((row) => (
-                        <span className="chip chip--liked" key={row.reason}>
-                          “{row.reason}”
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
-                {reasonHighlights.skipped.length > 0 && (
-                  <>
-                    <div className="subhead">You passed because</div>
-                    <div className="reasonchips">
-                      {reasonHighlights.skipped.map((row) => (
-                        <span className="chip chip--skipped" key={row.reason}>
-                          “{row.reason}”
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
 
             {reasoning.length > 0 && (
               <ul className="insightlist">

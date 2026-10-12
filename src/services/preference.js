@@ -69,8 +69,6 @@ const toRow = ({ summary, metadata, userId, tripId, destination }) => ({
   // agent's prose, which is how the bars came to disagree with the title above
   // them. See migration 20261008_preference_evidence.
   category_tally: metadata?.categoryTally || null,
-  reason_tally: metadata?.reasonTally || null,
-  reasoned_swipe_count: metadata?.reasonedSwipeCount || 0,
 });
 
 // The places a traveller actually swiped right on, with the category each was
@@ -153,7 +151,7 @@ export async function getPreferenceSummary({ tripId, destination }) {
   let query = supabase
     .from("preference_summaries")
     .select(
-      "style_name, tagline, pace, budget_preference, dining_preference, interests, dislikes, priorities, reasoning_insights, swipe_count, category_tally, reason_tally, reasoned_swipe_count"
+      "style_name, tagline, pace, budget_preference, dining_preference, interests, dislikes, priorities, reasoning_insights, swipe_count, category_tally"
     )
     .eq("user_id", userId);
 

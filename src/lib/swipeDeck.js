@@ -48,6 +48,30 @@ export function addSwipedKey(keys, card) {
 }
 
 /**
+ * Reverses `addSwipedKey` so an undone verdict puts the card back on the deck.
+ *
+ * Both the id and the name are dropped. The name is a fallback keyed for
+ * regenerated decks -- a card whose id churns is only recognisable by its place
+ * name (see `isCardSwiped`) -- so leaving it behind would keep the card out of
+ * the deck and make undo silently do nothing.
+ *
+ * Two cards in one deck sharing a place name each keep their own id, so undoing
+ * one returns exactly that one; only the shared name fallback is dropped.
+ */
+export function removeSwipedKey(keys, card) {
+  const ids = new Set(keys?.ids || []);
+  const names = new Set(keys?.names || []);
+  if (!card) return { ids, names };
+
+  if (card.id != null) ids.delete(String(card.id));
+
+  const name = normalizeDeckName(card.name);
+  if (name) names.delete(name);
+
+  return { ids, names };
+}
+
+/**
  * Splits a deck into what is left to swipe and how many were already judged.
  * `swipedCount` counts cards in THIS deck, not swipe rows: rows for places no
  * longer in the deck must not inflate the progress display.

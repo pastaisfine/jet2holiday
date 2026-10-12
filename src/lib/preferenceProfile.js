@@ -108,73 +108,17 @@ export function topCategoryFromTally(tally) {
 /**
  * The evidence line under the style name.
  *
- * The reason count is a count of swipes that carried at least one reason, not
- * of individual reasons: it cannot exceed the swipe count, so the sentence it
- * appears in always means something. A count of chips could read "18 swipes and
- * 24 reasons" and quietly imply the traveller is less decisive than they were.
- *
- * The clause is dropped entirely when no swipe carried a reason rather than
- * rendered as a zero, because "0 with a reason" invites the reading that the
- * traveller declined to engage when in fact there was nothing to pick.
+ * A bare swipe count. It used to carry a second clause counting swipes with a
+ * reason, which is gone with per-swipe notes.
  */
-export function toEvidenceLine({
-  swipeCount = 0,
-  reasonedSwipeCount = 0,
-} = {}) {
+export function toEvidenceLine({ swipeCount = 0 } = {}) {
   const swipes = Number(swipeCount) || 0;
-  const reasoned = Number(reasonedSwipeCount) || 0;
 
   if (swipes === 0) {
     return "";
   }
 
-  const swipesText = `${swipes} ${swipes === 1 ? "swipe" : "swipes"}`;
-
-  if (reasoned <= 0) {
-    return `Based on ${swipesText}`;
-  }
-
-  return `Based on ${swipesText}, ${reasoned} with a reason`;
-}
-
-/**
- * The reason chips a traveller reached for, most used first.
- *
- * These are the words the user actually tapped, so the ordering is decided here
- * rather than by the model -- an AI paraphrase of "Local favourite" and "Good
- * value" is not quotable as something the traveller chose.
- *
- * Expect empty arrays on generated trips: those cards ship with no chip
- * vocabulary (src/services/tripService.js deckRowToCard sets likeR/noR to []),
- * so only a typed note ever populates swipes.reasons.
- *
- * @param {{liked?: Array<{reason: string, count: number}>,
- *          skipped?: Array<{reason: string, count: number}>}} reasonTally
- * @param {{limit?: number}} [options]
- */
-export function toReasonHighlights(reasonTally, { limit = 2 } = {}) {
-  const source = asObject(reasonTally);
-  const top = (rows) =>
-    asArray(rows)
-      .filter(
-        (row) =>
-          row && typeof row.reason === "string" && row.reason.trim()
-      )
-      .map((row) => ({
-        reason: row.reason.trim(),
-        count: Number(row.count) || 0,
-      }))
-      .sort(
-        (a, b) =>
-          b.count - a.count ||
-          a.reason.localeCompare(b.reason)
-      )
-      .slice(0, limit);
-
-  return {
-    liked: top(source.liked),
-    skipped: top(source.skipped),
-  };
+  return `Based on ${swipes} ${swipes === 1 ? "swipe" : "swipes"}`;
 }
 
 /**

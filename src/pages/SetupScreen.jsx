@@ -138,7 +138,6 @@ export default function SetupScreen({ useAppState }) {
       idx: 0,
       likes: 0,
       skips: 0,
-      tagged: {},
       addedCards: [],
       cardsDeckId: null,
       pipelineCompleted: false,

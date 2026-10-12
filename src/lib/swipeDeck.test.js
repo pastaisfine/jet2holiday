@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildSwipedKeys,
   addSwipedKey,
+  removeSwipedKey,
   partitionDeck,
   isCardSwiped,
   normalizeDeckName,
@@ -57,6 +58,65 @@ describe("addSwipedKey", () => {
 
     expect(before.ids.size).toBe(0);
     expect(after.ids.has("gen-a")).toBe(true);
+    expect(after.names.has("klcc park")).toBe(true);
+  });
+});
+
+describe("removeSwipedKey", () => {
+  it("is the exact inverse of addSwipedKey", () => {
+    const original = buildSwipedKeys([{ card_id: "gen-b", card_name: "Batu Caves" }]);
+    const added = addSwipedKey(original, card("gen-a", "KLCC Park"));
+    const removed = removeSwipedKey(added, card("gen-a", "KLCC Park"));
+
+    expect(removed.ids.has("gen-a")).toBe(false);
+    expect(removed.names.has("klcc park")).toBe(false);
+    // The untouched card survives the round trip.
+    expect(removed.ids.has("gen-b")).toBe(true);
+    expect(removed.names.has("batu caves")).toBe(true);
+  });
+
+  it("returns the card to the deck after a regenerate changed its id", () => {
+    // The name is the only thing that survives a regenerated deck, so undo has
+    // to drop it or the card never comes back.
+    const keys = buildSwipedKeys([{ card_id: "gen-old-uuid", card_name: "KLCC Park" }]);
+    const regenerated = card("gen-new-uuid", "KLCC Park");
+    expect(isCardSwiped(regenerated, keys)).toBe(true);
+
+    const after = removeSwipedKey(keys, regenerated);
+    expect(isCardSwiped(regenerated, after)).toBe(false);
+  });
+
+  it("undoes one of two same-named cards without disturbing the other", () => {
+    // isCardSwiped merges same-named cards on the name fallback, but each keeps
+    // its own id -- so undoing one must return exactly that one.
+    const twinA = card("gen-a", "KLCC Park");
+    const twinB = card("gen-b", "KLCC Park");
+    const keys = buildSwipedKeys([
+      { card_id: "gen-a", card_name: "KLCC Park" },
+      { card_id: "gen-b", card_name: "KLCC Park" },
+    ]);
+
+    const after = removeSwipedKey(keys, twinA);
+
+    expect(isCardSwiped(twinA, after)).toBe(false);
+    expect(isCardSwiped(twinB, after)).toBe(true);
+    expect(after.ids.has("gen-b")).toBe(true);
+  });
+
+  it("tolerates a missing card, a null key set and a nameless card", () => {
+    const keys = buildSwipedKeys([{ card_id: "gen-a", card_name: "KLCC Park" }]);
+
+    expect(removeSwipedKey(keys, null).ids.size).toBe(1);
+    expect(removeSwipedKey(null, card("gen-a", "KLCC Park")).ids.size).toBe(0);
+    expect(removeSwipedKey(keys, { id: "gen-a" }).ids.size).toBe(0);
+  });
+
+  it("ignores a blank name rather than deleting the empty key", () => {
+    const keys = buildSwipedKeys([{ card_id: "gen-a", card_name: "KLCC Park" }]);
+    const after = removeSwipedKey(keys, { id: "gen-a", name: "   " });
+
+    expect(after.ids.size).toBe(0);
+    expect(after.names.has("")).toBe(false);
     expect(after.names.has("klcc park")).toBe(true);
   });
 });

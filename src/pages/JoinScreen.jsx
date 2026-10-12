@@ -110,7 +110,6 @@ export default function JoinScreen({ useAppState }) {
           idx: 0,
           likes: 0,
           skips: 0,
-          tagged: {},
           addedCards: sharedCards,
           cardsDeckId: deckId || null,
           pipelineCompleted: sharedCards.length > 0,
@@ -220,7 +219,7 @@ export default function JoinScreen({ useAppState }) {
             <div style={{ fontSize: 13, color: "var(--muted)" }}>Hosted by <b style={{ color: "var(--fg)" }}>{hostName}</b></div>
           )}
           <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 0", lineHeight: 1.5 }}>
-            Swipe places, add reasons, and let the group's votes build a shared itinerary everyone actually agrees on.
+            Swipe places, and let the group's votes build a shared itinerary everyone actually agrees on.
           </p>
         </div>
 

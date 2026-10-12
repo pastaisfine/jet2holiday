@@ -5,7 +5,6 @@ import {
   toInterestBars,
   topCategoryFromTally,
   toEvidenceLine,
-  toReasonHighlights,
   toIdealDay,
   toLegacyTally,
   inferCategoryFromLabel,
@@ -191,88 +190,13 @@ describe("toEvidenceLine", () => {
     expect(toEvidenceLine({ swipeCount: 1 })).toBe("Based on 1 swipe");
   });
 
-  it("counts swipes that carried a reason, not individual reasons", () => {
-    expect(
-      toEvidenceLine({ swipeCount: 18, reasonedSwipeCount: 6 })
-    ).toBe("Based on 18 swipes, 6 with a reason");
+  it("counts swipes, not individual cards", () => {
+    expect(toEvidenceLine({ swipeCount: 18 })).toBe("Based on 18 swipes");
   });
 
-  it("drops the reason clause rather than reporting zero", () => {
-    expect(
-      toEvidenceLine({ swipeCount: 18, reasonedSwipeCount: 0 })
-    ).toBe("Based on 18 swipes");
-  });
-
-  it("keeps the singular for one reasoned swipe", () => {
-    expect(
-      toEvidenceLine({ swipeCount: 1, reasonedSwipeCount: 1 })
-    ).toBe("Based on 1 swipe, 1 with a reason");
-  });
-
-  it("never claims more reasoned swipes than swipes", () => {
-    const line = toEvidenceLine({
-      swipeCount: 3,
-      reasonedSwipeCount: 24,
-    });
-    expect(line).toContain("3 swipes");
-  });
-});
-
-describe("toReasonHighlights", () => {
-  it("returns the most-used reasons per direction", () => {
-    const highlights = toReasonHighlights({
-      liked: [
-        { reason: "Good value", count: 5 },
-        { reason: "Local favourite", count: 2 },
-        { reason: "Great views", count: 1 },
-      ],
-      skipped: [{ reason: "Too expensive", count: 4 }],
-    });
-
-    expect(highlights.liked.map((row) => row.reason)).toEqual([
-      "Good value",
-      "Local favourite",
-    ]);
-    expect(highlights.skipped.map((row) => row.reason)).toEqual([
-      "Too expensive",
-    ]);
-  });
-
-  it("returns nothing when there are no reasons", () => {
-    // The generated deck ships cards with an empty chip vocabulary, so this is
-    // the common case on a real trip rather than an edge case.
-    expect(toReasonHighlights({ liked: [], skipped: [] })).toEqual({
-      liked: [],
-      skipped: [],
-    });
-    expect(toReasonHighlights()).toEqual({ liked: [], skipped: [] });
-  });
-
-  it("discards blank and malformed entries", () => {
-    const highlights = toReasonHighlights({
-      liked: [
-        { reason: "   ", count: 9 },
-        { reason: "Nice", count: 1 },
-        null,
-        { count: 4 },
-      ],
-    });
-
-    expect(highlights.liked).toEqual([{ reason: "Nice", count: 1 }]);
-  });
-
-  it("breaks ties alphabetically so the order does not shuffle", () => {
-    const highlights = toReasonHighlights({
-      liked: [
-        { reason: "Zesty", count: 2 },
-        { reason: "Airy", count: 2 },
-      ],
-    });
-
-    expect(highlights.liked.map((row) => row.reason)).toEqual([
-      "Airy",
-      "Zesty",
-    ]);
+  it("tolerates a missing or non-numeric count", () => {
+    expect(toEvidenceLine({ swipeCount: null })).toBe("");
+    expect(toEvidenceLine({ swipeCount: "many" })).toBe("");
   });
 });
 
@@ -650,16 +574,6 @@ describe("null tolerance", () => {
     expect(resolveStyleName("Night-Optimist", null)).toBe(
       "Night-Optimist"
     );
-  });
-
-  it("reads absent reasons as no reasons", () => {
-    expect(toReasonHighlights(null)).toEqual({ liked: [], skipped: [] });
-  });
-
-  it("reads a half-populated reason tally without losing the other half", () => {
-    expect(
-      toReasonHighlights({ skipped: [{ reason: "Too crowded", count: 2 }] })
-    ).toEqual({ liked: [], skipped: [{ reason: "Too crowded", count: 2 }] });
   });
 
   it("reads absent preferences as unset", () => {

@@ -273,7 +273,7 @@ export async function getUserSwipes({ tripId, destination }) {
 
   let query = supabase
     .from("swipes")
-    .select("card_id, card_name, direction, reasons, swiped_at")
+    .select("id, card_id, card_name, direction, category, swiped_at")
     .eq("user_id", userId);
 
   query = tripId
@@ -291,6 +291,30 @@ export async function getUserSwipes({ tripId, destination }) {
 }
 
 /**
+ * Removes one verdict, which puts the place back on the deck.
+ *
+ * The row is deleted rather than flagged: the deck is derived from the set of
+ * judged rows, so a surviving row would keep the card out of the deck and a
+ * soft-delete would need its own exclusion in `partitionDeck`. Callers are
+ * already optimistic about the local state, so a failure is reported rather
+ * than thrown -- the row stays and the deck re-syncs on the next read.
+ *
+ * Refused once the leader has locked preferences, enforced by a trigger.
+ */
+export async function deleteSwipe(id) {
+  if (!id) return false;
+
+  const { error } = await supabase.from("swipes").delete().eq("id", id);
+
+  if (error) {
+    console.warn("Error deleting swipe:", error.message);
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Fetches all swipes for a given trip, joining profile details for each user.
  */
 export async function getTripSwipes(tripId) {
@@ -298,7 +322,7 @@ export async function getTripSwipes(tripId) {
   try {
     const { data, error } = await supabase
       .from("swipes")
-      .select("id, user_id, card_id, card_name, destination, direction, reasons, reason, swiped_at, trip_id")
+      .select("id, user_id, card_id, card_name, category, destination, direction, swiped_at, trip_id")
       .eq("trip_id", tripId);
 
     if (error) {

@@ -1605,6 +1605,12 @@
   flex-direction: column;
   touch-action: none;
   user-select: none;
+  /* The cards behind the top one advance a step when it leaves. Without this
+     they snap from `back2` to `back1` in a single frame, which reads as a jump
+     rather than a deck settling. Deliberately not `transform`: framer-motion
+     writes that inline from the drag motion value, and a CSS transition on it
+     would fight the gesture. */
+  transition: opacity .28s ease, filter .28s ease;
 }
 
 .swcard.back1 {
@@ -1736,6 +1742,161 @@
   justify-content: center;
   gap: 20px;
   padding: 12px 20px 16px;
+}
+
+/* Undo sits directly under the action buttons so it is reachable from the same
+   hand position as the verdict it reverses. */
+.sw-undo {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 16px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 34px;
+}
+
+/* Truncates only as a last resort: the place name is the whole point of the
+   row, and the two controls beside it must never be the thing that shrinks. */
+.sw-undo-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+.sw-undo-btn,
+.sw-undo-link {
+  flex-shrink: 0;
+}
+
+.sw-undo-btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.sw-undo-btn:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.sw-undo-link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.sw-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.chip-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip-btn:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+/* The history screen is a plain list of verdicts, so it leans on the same
+   surfaces as the rest of the app rather than inventing a new one. */
+.swipe-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px 28px;
+}
+
+/* The name gets its own line. Three controls (tag, flip, remove) on one row
+   truncated every place name longer than about fifteen characters on a phone,
+   and the name is the only thing on the row worth reading. */
+.swipe-history-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 12px);
+}
+
+.swipe-history-name {
+  flex: 1 0 100%;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--fg);
+  line-height: 1.3;
+}
+
+.swipe-history-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--r-pill, 999px);
+  flex-shrink: 0;
+  margin-right: auto;
+}
+
+.swipe-history-tag.like {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.swipe-history-tag.skip {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.swipe-history-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill, 999px);
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.swipe-history-btn:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.swipe-history-empty {
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .loading-skeleton-card {

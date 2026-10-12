@@ -1,8 +1,8 @@
 import { useState, useReducer, useRef, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import SwipeCard from "../components/SwipeCard";
 import BottomSheet from "../components/BottomSheet";
-import ReasonChips from "../components/ReasonChips";
 import InfiniteSpiral from "../components/InfiniteSpiral";
 import { searchPlaces } from "../services/placesAutocomplete";
 import { useAuth } from "../context/useAuth";
@@ -10,7 +10,7 @@ import { usePipeline, startPipeline } from "../services/generateTrip";
 import { supabase } from "../lib/supabase";
 import { CARD_DATA } from "../data/cards";
 import { normaliseStoredPreferences } from "../lib/preferenceProfile";
-import { addSwipedKey, buildSwipedKeys, partitionDeck } from "../lib/swipeDeck";
+import { addSwipedKey, removeSwipedKey, buildSwipedKeys, partitionDeck } from "../lib/swipeDeck";
 import { describeDeckFailure, isThinDestination, CLIENT_FAILURE } from "../lib/deckFailure";
 import {
   analyzePreferences,
@@ -27,6 +27,7 @@ import {
   getTripDeckId,
   getTripMembers,
   getUserSwipes,
+  deleteSwipe,
   subscribeTripMembers,
 } from "../services/tripService";
 import InviteCrewDialog from "../components/InviteCrewDialog";
@@ -35,7 +36,7 @@ import { shouldPromptForInvite, shouldRetireInvitePrompt } from "../lib/invitePr
 
 const LISBON_FALLBACK = "Lisbon, Portugal";
 
-const initialSheets = { reason: false, detail: false, addPlace: false, more: false };
+const initialSheets = { detail: false, addPlace: false, more: false };
 const preferenceOptions = {
   rhythm: ["Early start", "Balanced", "Relaxed mornings", "Flexible"],
   density: ["Packed", "Balanced", "Unstructured", "Flexible"],
@@ -47,8 +48,6 @@ const emptyPreferences = { rhythm: "", density: "", dietary: [], dining: "", foo
 
 function sheetsReducer(state, action) {
   switch (action.type) {
-    case "reason":
-      return { ...initialSheets, reason: true };
     case "detail":
       return { ...initialSheets, detail: true };
     case "addPlace":
@@ -86,7 +85,7 @@ export default function SwipeScreen({ useAppState }) {
     likes,
     skips,
     swipeCard,
-    saveReason,
+    unswipeCard,
     allCards,
     appendCard,
     appendGeneratedCards,
@@ -100,7 +99,6 @@ export default function SwipeScreen({ useAppState }) {
     tripId,
     update,
     addedCards,
-    tagged,
     pipelineThinFallback,
     pipelineFailureCode,
     invitePromptDismissed,
@@ -118,22 +116,16 @@ export default function SwipeScreen({ useAppState }) {
     }),
     [session?.user?.id, tripId, dest]
   );
-  const currentSwipeIdRef = useRef(null);
   // The scope the analysis has been started for, if any. Holding the scope
   // rather than a boolean means a scope change -- switching accounts, or a
   // different destination -- re-arms the trigger without an effect that would
   // reset on StrictMode's double invoke.
   const preferenceAnalysisScopeRef = useRef(null);
-  const lastSwipePersistRef = useRef(Promise.resolve());
 
   // Cards this member has already judged, rebuilt from the database. Until the
   // read resolves the deck renders whole, so a slow query costs a moment of
   // over-showing rather than blocking the screen.
   const [swipedKeys, setSwipedKeys] = useState(() => ({ ids: new Set(), names: new Set() }));
-  const taggedRef = useRef(tagged);
-  useEffect(() => {
-    taggedRef.current = tagged;
-  }, [tagged]);
 
   const hydratedScopeRef = useRef(null);
   useEffect(() => {
@@ -152,23 +144,10 @@ export default function SwipeScreen({ useAppState }) {
 
         setSwipedKeys(buildSwipedKeys(rows));
 
-        // Local reasons win over the stored row so a just-saved reason is not
-        // briefly reverted by a slower read; the DB fills in everything from
-        // earlier sessions that this device never had.
-        const taggedFromDb = {};
-        for (const row of rows) {
-          if (row.card_id == null) continue;
-          taggedFromDb[String(row.card_id)] = {
-            dir: row.direction === "like" ? "yes" : "no",
-            reasons: Array.isArray(row.reasons) ? row.reasons : [],
-          };
-        }
-
         update({
           likes: rows.filter((row) => row.direction === "like").length,
           skips: rows.filter((row) => row.direction === "skip").length,
           idx: rows.length,
-          tagged: { ...taggedFromDb, ...taggedRef.current },
         });
       } catch (error) {
         // Progress falls back to whatever localStorage held; the screen stays
@@ -226,7 +205,7 @@ export default function SwipeScreen({ useAppState }) {
   }
 
   try {
-    await lastSwipePersistRef.current;
+    await pendingPersistRef.current;
 
     const destination = dest || LISBON_FALLBACK;
 
@@ -238,7 +217,7 @@ export default function SwipeScreen({ useAppState }) {
     // not in a trip yet, which is when the swipes carry a null trip_id too.
     let query = supabase
       .from("swipes")
-      .select("card_name, direction, reasons, category")
+      .select("card_name, direction, category")
       .eq("user_id", session.user.id);
 
     query = tripId
@@ -254,9 +233,6 @@ export default function SwipeScreen({ useAppState }) {
     const swipes = (data || []).map((swipe) => ({
       card_name: swipe.card_name,
       direction: swipe.direction,
-      reasons: Array.isArray(swipe.reasons)
-        ? swipe.reasons
-        : [],
       category: swipe.category || null,
     }));
 
@@ -372,11 +348,24 @@ export default function SwipeScreen({ useAppState }) {
     }
   }, [preferenceId, preferenceProfiles]);
   const [sheets, dispatchSheets] = useReducer(sheetsReducer, initialSheets);
-  const [reasonCard, setReasonCard] = useState(null);
-  const [reasonDir, setReasonDir] = useState("yes");
-  const [reasonSel, setReasonSel] = useState([]);
-  const [reasonFree, setReasonFree] = useState("");
   const [detailCard, setDetailCard] = useState(null);
+
+  // Undo holds the verdict that can still be taken back, plus the stack behind
+  // it. In-memory on purpose: the ids in a swipe row are not stable across deck
+  // regenerations (see lib/swipeDeck), so a persisted stack would resurrect
+  // cards that no longer exist. /swipe/history is the durable escape hatch.
+  const [undoEntry, setUndoEntry] = useState(null);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const undoStackRef = useRef([]);
+  // The newest verdict write still in flight. The preference analysis runs off
+  // an effect the moment the deck empties, so it has to wait for this or it can
+  // read a snapshot that is missing the swipe the member just cast.
+  const pendingPersistRef = useRef(Promise.resolve());
+  // The top card, so a button press can drive the same fly-out a swipe does.
+  const topCardRef = useRef(null);
+  // One verdict at a time: the buttons and the gesture both funnel through
+  // requestVerdict, and without this a fast double-tap commits the next card too.
+  const inFlightRef = useRef(false);
 
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeResults, setPlaceResults] = useState([]);
@@ -644,35 +633,6 @@ export default function SwipeScreen({ useAppState }) {
     }
   }, [pipelineThinFallback, generatedCards.length, update]);
 
-  const handleVerdict = (dir) => {
-  const card = unswiped[0];
-  if (!card || locked) return;
-
-  const swipeId = crypto.randomUUID();
-  currentSwipeIdRef.current = swipeId;
-
-  swipeCard(dir);
-
-  // The card disappears the moment the verdict is cast, from the same key set
-  // the durable rows produced, so the optimistic update and the next refresh
-  // agree about what is left.
-  setSwipedKeys((prev) => addSwipedKey(prev, card));
-
-  const tracked = persistSwipe(card, dir, null, swipeId).then((id) => {
-    // The stored row may pre-date this session; keep the reason save pointed
-    // at the row that actually exists.
-    if (id) currentSwipeIdRef.current = id;
-    return id;
-  });
-  lastSwipePersistRef.current = tracked;
-
-  setReasonCard(card);
-  setReasonDir(dir);
-  setReasonSel([]);
-  setReasonFree("");
-  dispatchSheets({ type: "reason" });
-};
-
   // One verdict per (member, trip/destination, place), never a second row.
   //
   // PostgREST's on_conflict cannot name the partial unique indexes that enforce
@@ -681,13 +641,10 @@ export default function SwipeScreen({ useAppState }) {
   // fire-and-forget write, and a failure is logged rather than allowed to
   // interrupt the deck.
   const persistSwipe = useCallback(
-  async (card, dir, reasons = null, knownId = null) => {
+  async (card, dir, knownId = null) => {
     if (!session?.user?.id || !card) {
       return null;
     }
-
-    const finalReasons =
-      reasons && reasons.length > 0 ? reasons : null;
 
     const row = {
       user_id: session.user.id,
@@ -699,8 +656,6 @@ export default function SwipeScreen({ useAppState }) {
       category: card.category || null,
       destination: dest || LISBON_FALLBACK,
       direction: dir === "yes" ? "like" : "skip",
-      reasons: finalReasons,
-      reason: finalReasons ? finalReasons.join(", ") : null,
       trip_id: tripId || null,
     };
 
@@ -757,34 +712,77 @@ export default function SwipeScreen({ useAppState }) {
   [session, dest, tripId]
 );
 
-  const saveAndClose = async () => {
-    if (!reasonCard) {
-      dispatchSheets({ type: "close" });
-      return;
-    }
-    const reasons = [...reasonSel];
-    if (reasonFree.trim()) reasons.push(reasonFree.trim());
-    const finalReasons = reasons.length > 0 ? reasons : null;
+  // Commits a verdict. Only called once the card has finished flying out, so the
+  // removal the user sees and the row that gets written happen together.
+  const handleVerdict = useCallback((dir, cardOverride = null) => {
+  const card = cardOverride || unswiped[0];
+  if (!card || locked) return;
 
-    saveReason(reasonCard.id, reasonDir, reasons);
+  swipeCard(dir);
 
-    // Wait for the verdict's own write so the reasons land on the same row
-    // instead of racing it.
-    const persistedId = await lastSwipePersistRef.current;
-    await persistSwipe(
-      reasonCard,
-      reasonDir,
-      finalReasons,
-      persistedId || currentSwipeIdRef.current
+  // The card disappears the moment the verdict is cast, from the same key set
+  // the durable rows produced, so the optimistic update and the next refresh
+  // agree about what is left.
+  setSwipedKeys((prev) => addSwipedKey(prev, card));
+
+  const swipeId = crypto.randomUUID();
+  const settled = persistSwipe(card, dir, swipeId).then((id) => id || swipeId);
+  pendingPersistRef.current = settled;
+
+  undoStackRef.current = [...undoStackRef.current, { card, dir, id: swipeId }];
+  setUndoEntry(undoStackRef.current[undoStackRef.current.length - 1]);
+  setUndoBusy(false);
+
+  settled.then((id) => {
+    undoStackRef.current = undoStackRef.current.map((entry) =>
+      entry.id === swipeId ? { ...entry, id } : entry
     );
+  });
+  // `unswiped` is read for its head only, and the verdict always targets the
+  // card the caller animated out, so a changing deck does not stale this.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [locked, swipeCard, persistSwipe]);
 
-    dispatchSheets({ type: "close" });
-  };
+  const requestVerdict = useCallback(
+    (dir) => {
+      const card = unswiped[0];
+      if (!card || locked || inFlightRef.current) return;
+
+      inFlightRef.current = true;
+      Promise.resolve(topCardRef.current?.flyOut(dir))
+        .then(() => handleVerdict(dir, card))
+        .catch((error) => console.warn("Swipe commit failed:", error?.message || error))
+        .finally(() => {
+          inFlightRef.current = false;
+        });
+    },
+    [unswiped, locked, handleVerdict]
+  );
+
+  // Puts the most recent verdict back on the deck. The row is deleted rather
+  // than flagged, so the durable state matches the deck exactly and the plan
+  // snapshot has nothing stale to reason about.
+  const undoLastSwipe = useCallback(async () => {
+    const entry = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!entry || undoBusy) return;
+
+    setUndoBusy(true);
+    try {
+      // A verdict whose write failed never became a row, so there is nothing to
+      // delete -- the local state still needs reverting either way.
+      await deleteSwipe(entry.id).catch(() => {});
+      setSwipedKeys((prev) => removeSwipedKey(prev, entry.card));
+      unswipeCard(entry.dir);
+      undoStackRef.current = undoStackRef.current.slice(0, -1);
+      setUndoEntry(undoStackRef.current[undoStackRef.current.length - 1] || null);
+    } finally {
+      setUndoBusy(false);
+    }
+  }, [undoBusy, unswipeCard]);
 
 useEffect(() => {
   if (total === 0) return;
   if (unswiped.length > 0) return;
-  if (sheets.reason) return;
   if (pipeline.phase === "generating") return;
   if (!session?.user?.id) return;
   // The lock read settles before any agent run is armed: a locked trip never
@@ -802,7 +800,6 @@ useEffect(() => {
 }, [
   unswiped.length,
   total,
-  sheets.reason,
   pipeline.phase,
   session,
   lockKnown,
@@ -924,8 +921,18 @@ return (
               </button>
             )}
           </div>
-          <div className="chip" style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--fg)", fontWeight: 600, fontSize: 12, padding: "4px 12px" }}>
-            {likes} liked · {skips} skipped
+          <div className="sw-head-actions">
+            {/* One control, not two: the tally is also the way into the history
+                screen. A separate "Review" chip beside it crowded the row on a
+                phone and made the dates prompt wrap. */}
+            <button
+              className="chip chip-btn"
+              onClick={() => navigate("/swipe/history")}
+              disabled={swipedCount === 0}
+              title={swipedCount === 0 ? "Swipe a place to review your picks" : "Review your picks"}
+            >
+              {likes} liked · {skips} skipped
+            </button>
           </div>
         </div>
 
@@ -976,7 +983,7 @@ return (
               )}
             </div>
           </div>
-        ) : unswiped.length === 0 && !sheets.reason ? (
+        ) : unswiped.length === 0 ? (
           <div className="deck-zone">
             {pipeline.phase === "generating" ? (
               <div className="deck">
@@ -1013,7 +1020,7 @@ return (
                   That's a full opinion.
                 </h2>
                 <p className="splash-copy" style={{ textAlign: "center" }}>
-                  {likes} likes, {skips} skips and every reason is now a weighted signal — not just a tick box.
+                  {likes} likes and {skips} skips — every one is a weighted signal now, not just a tick box.
                 </p>
 
                  <button
@@ -1055,34 +1062,63 @@ return (
         ) : (
           <div className="deck-zone">
           <div className="deck">
+            {/* AnimatePresence gives the card an exit. The fly-out itself is
+                driven imperatively by the card (see SwipeCard.flyOut) so a
+                button press and a gesture release leave identically, and the
+                verdict is committed only once the card is out of the way. */}
+            <AnimatePresence initial={false}>
             {unswiped.slice(0, 3).map((card, i) => {
               const stacked = i;
               return (
                 <SwipeCard
                   key={card.id}
+                  ref={stacked === 0 ? topCardRef : null}
                   card={card}
                   stacked={stacked}
-                  onVerdict={handleVerdict}
+                  disabled={locked || inFlightRef.current}
+                  onVerdict={requestVerdict}
                   onDetail={() => openDetail(card)}
                 />
               );
             })}
+            </AnimatePresence>
             </div>
           </div>
         )}
 
         {!locked && unswiped.length > 0 && (
           <div className="sw-actions">
-            <button className="sw-btn no" onClick={() => handleVerdict("no")} aria-label="Skip">
+            <button className="sw-btn no" onClick={() => requestVerdict("no")} aria-label="Skip">
               <XIcon />
             </button>
             <button className="sw-btn" onClick={() => openDetail()} aria-label="Details" style={{ width: 52, height: 52 }}>
               <InfoIcon />
             </button>
-            <button className="sw-btn yes" onClick={() => handleVerdict("yes")} aria-label="Like">
+            <button className="sw-btn yes" onClick={() => requestVerdict("yes")} aria-label="Like">
               <HeartIcon />
             </button>
          </div>
+        )}
+
+        {undoEntry && !locked && (
+          <div className="sw-undo" role="status">
+            <span className="sw-undo-label">
+              {undoEntry.card.name} {undoEntry.dir === "yes" ? "kept" : "skipped"}
+            </span>
+            <button
+              className="sw-undo-btn"
+              onClick={undoLastSwipe}
+              disabled={undoBusy}
+            >
+              {undoBusy ? "Undoing…" : "Undo"}
+            </button>
+            <button
+              className="sw-undo-link"
+              onClick={() => navigate("/swipe/history")}
+            >
+              History
+            </button>
+          </div>
         )}
 
         <BottomSheet open={preferenceOpen} onClose={() => setPreferenceOpen(false)} className="preference-sheet">
@@ -1098,39 +1134,6 @@ return (
           <div className="preference-group"><label>Dietary restrictions</label><div className="preference-options">{preferenceOptions.dietary.map((option) => <button type="button" key={option} className={`preference-option ${(preferences.dietary || []).includes(option) ? "sel" : ""}`} onClick={() => toggleDietary(option)}>{option}</button>)}</div></div>
           <input className="input" value={preferences.note} onChange={(event) => setPreferences((current) => ({ ...current, note: event.target.value }))} placeholder="Allergies or requirements (optional)" />
           <div className="actions"><button className="btn btn-secondary" onClick={skipPreferences}>Skip for now</button><button className="btn btn-primary" onClick={savePreferences}>Save preferences</button></div>
-        </BottomSheet>
-
-        <BottomSheet
-          open={sheets.reason}
-          onClose={() => dispatchSheets({ type: "close" })}
-        >
-          <h3>{reasonDir === "yes" ? "Why the yes?" : "What ruled it out?"}</h3>
-          <p className="sub">
-            {reasonDir === "yes"
-              ? `These adjust how we rank ${reasonCard?.name} for you — and for the group.`
-              : 'Hard "no"s stick. They\'re dealbreakers, not points against.'}
-          </p>
-          <ReasonChips
-            chips={reasonDir === "yes" ? reasonCard?.likeR || [] : reasonCard?.noR || []}
-            selected={reasonSel}
-            onToggle={(r) =>
-              setReasonSel((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]))
-            }
-          />
-          <input
-            className="reason-input"
-            placeholder="Add a note (optional)"
-            value={reasonFree}
-            onChange={(e) => setReasonFree(e.target.value)}
-          />
-          <div className="actions">
-            <button className="btn btn-secondary" onClick={() => dispatchSheets({ type: "close" })}>
-              Skip
-            </button>
-            <button className="btn btn-primary" onClick={saveAndClose}>
-              Save reason
-            </button>
-          </div>
         </BottomSheet>
 
         <BottomSheet

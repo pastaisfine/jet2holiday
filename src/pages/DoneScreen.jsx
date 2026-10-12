@@ -3,7 +3,7 @@ import { useAuth } from "../context/useAuth";
 
 export default function DoneScreen({ useAppState }) {
   const navigate = useNavigate();
-  const { likes, skips, reasonCount } = useAppState;
+  const { likes, skips } = useAppState;
   const { profile } = useAuth();
   const userName = profile?.username || "Alice";
 
@@ -20,12 +20,12 @@ export default function DoneScreen({ useAppState }) {
           You're done, {userName}.
         </h1>
         <p style={{ margin: "6px 0 0", fontSize: 14, color: "var(--muted)", lineHeight: 1.5, maxWidth: "42ch" }}>
-          {likes} likes, {skips} skips and every reason logged are now weighted signals shaping the group plan.
+          {likes} likes and {skips} skips are now weighted signals shaping the group plan.
         </p>
       </div>
 
-      {/* Stats Bento Trio */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+      {/* Stats Bento */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
         <div className="bento-card" style={{ padding: "16px 12px", textAlign: "center", alignItems: "center" }}>
           <div style={{ fontSize: 28, fontWeight: 800, color: "var(--gerund)", letterSpacing: "-0.02em" }}>{likes}</div>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginTop: 2 }}>Liked</div>
@@ -33,10 +33,6 @@ export default function DoneScreen({ useAppState }) {
         <div className="bento-card" style={{ padding: "16px 12px", textAlign: "center", alignItems: "center" }}>
           <div style={{ fontSize: 28, fontWeight: 800, color: "var(--nom)", letterSpacing: "-0.02em" }}>{skips}</div>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginTop: 2 }}>Skipped</div>
-        </div>
-        <div className="bento-card" style={{ padding: "16px 12px", textAlign: "center", alignItems: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: "var(--fg)", letterSpacing: "-0.02em" }}>{reasonCount}</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginTop: 2 }}>Reasons</div>
         </div>
       </div>
 

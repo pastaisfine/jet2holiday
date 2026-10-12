@@ -20,6 +20,7 @@ import SetupStep2Screen from "./pages/SetupStep2Screen";
 import SetupStep3Screen from "./pages/SetupStep3Screen";
 import StyleScreen from "./pages/StyleScreen";
 import SwipeScreen from "./pages/SwipeScreen";
+import SwipeHistoryScreen from "./pages/SwipeHistoryScreen";
 import TravelScreen from "./pages/TravelScreen";
 import TravelSearchScreen from "./pages/TravelSearchScreen";
 import TasksScreen from "./pages/TasksScreen";
@@ -35,6 +36,7 @@ const CHROME = {
   "/travel":           { header: true, invert: false, back: "/plan", backLabel: "Plan", tabs: true, active: "trip" },
   "/travel/search":    { header: true, invert: false, back: "/travel", backLabel: "Travel", tabs: true, active: "trip" },
   "/swipe":            { header: true, invert: false, back: "/setup/step3", backLabel: "Setup", tabs: true, active: "swipe" },
+  "/swipe/history":    { header: true, invert: false, back: "/swipe", backLabel: "Swipe", tabs: false },
   "/done":             { header: true, invert: false, back: "/swipe", backLabel: "Swipe", tabs: false },
   "/style":            { header: true, invert: false, back: "/done", backLabel: "Done", tabs: false },
   "/plan":             { header: true, invert: false, back: "/hub", backLabel: "Trip", tabs: true, active: "plan" },
@@ -140,6 +142,7 @@ function Shell() {
     "/travel":          <TravelScreen useAppState={appState} />,
     "/travel/search":   <TravelSearchScreen useAppState={appState} />,
     "/swipe":           <SwipeScreen useAppState={appState} />,
+    "/swipe/history":   <RequireAuth><SwipeHistoryScreen /></RequireAuth>,
     "/done":            <DoneScreen useAppState={appState} />,
     "/style":           <StyleScreen useAppState={appState} />,
     "/plan":            <PlanScreen useAppState={appState} />,

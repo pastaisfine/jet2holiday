@@ -69,7 +69,6 @@ type SwipeRow = {
   user_id: string;
   card_name: string;
   direction: string;
-  reasons: string[] | null;
   category: string | null;
 };
 
@@ -620,7 +619,7 @@ Deno.serve(async (req: Request) => {
     // evidence that is actually on the table.
     const deckNames = new Set(cards.map((c) => c.name));
     const swipes = await admin.get(
-      `swipes?trip_id=eq.${encodeURIComponent(tripId)}&select=user_id,card_name,direction,reasons,category`,
+      `swipes?trip_id=eq.${encodeURIComponent(tripId)}&select=user_id,card_name,direction,category`,
     ) as SwipeRow[];
 
     const relevantSwipes = swipes.filter((s) => deckNames.has(s.card_name));
@@ -634,9 +633,7 @@ Deno.serve(async (req: Request) => {
     for (const swipe of relevantSwipes) {
       const bucket = evidenceByUser.get(swipe.user_id);
       if (!bucket) continue;
-      const label = swipe.reasons?.length
-        ? `${swipe.card_name} (${swipe.reasons.slice(0, 2).join("; ")})`
-        : swipe.card_name;
+      const label = swipe.card_name;
       if (swipe.direction === "like") bucket.liked.push(label);
       else if (swipe.direction === "skip") bucket.disliked.push(label);
     }
@@ -715,7 +712,7 @@ Deno.serve(async (req: Request) => {
 You receive three layers of information:
 - Layer 1: trip-level constraints (destination, dates, member count, trip style).
 - Layer 2: each member's preference summary (priorities, interests, avoid, pace, dining, budget, insights).
-- Layer 3: relevant swipe evidence -- only the deck cards each member actually liked or disliked, with the reasons they gave.
+- Layer 3: relevant swipe evidence -- only the deck cards each member actually liked or disliked.
 - Precomputed tallies: exact per-place like/skip counts and per-category like/skip counts. Trust these numbers over your own reading; never recount.
 
 Your job is consensus, not a schedule. Decide WHAT the group should do and where the genuine friction is.
