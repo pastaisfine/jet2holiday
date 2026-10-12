@@ -114,7 +114,7 @@ Evidence:
 
 **3. Card Swipe**
 ![Card Swipe](./images/KeyScreen3.png)
-**Interaction:** Members swipe left or right on local spots and activities and provide a short reason for each choice. The AI combines both the choice and reasoning in real time to identify shared interests, explain disagreements, and find options that better fit the group. These preference insights can also be retained to improve recommendations for future trips.
+**Interaction:** Members swipe left or right on local spots and activities. The AI combines both the choice and reasoning in real time to identify shared interests, explain disagreements, and find options that better fit the group. These preference insights can also be retained to improve recommendations for future trips.
 
 **4. Shared Plan Map Visualization: See the Whole Trip, Not Just a List**
 ![Shared Plan Map Visualization: See the Whole Trip, Not Just a List](./images/KeyScreen4.png)
@@ -137,7 +137,7 @@ jet2holiday differentiates itself from conventional travel-planning applications
 | Feature | What Makes It Different |
 | --- | --- |
 | **AI Multi-Agent Trip Planning** | Instead of relying on a single AI itinerary generator, jet2holiday uses specialised agents—**Task Agent**, **Preference Agent**, **Group Planner Agent**, and **Itinerary Agent**—that work together to analyse group preferences, discover suitable options, resolve conflicts, and construct a shared itinerary. |
-| **Reasoning-Aware Group Coordination Hub** | Goes beyond simple group voting or Tinder-style swiping. Members swipe on activities and can provide reasons for their choices, allowing the AI to understand why someone likes or dislikes an option and use that reasoning when finding compromises for the group. |
+| **Reasoning-Aware Group Coordination Hub** | Goes beyond simple group voting or Tinder-style swiping. Members swipe on activities. |
 | **AI-Based Preference Conflict Resolution** | Instead of simply combining everyone's choices, jet2holiday identifies agreements, conflicts, priorities, and constraints between members and recommends compromises that aim to maximise overall group satisfaction. |
 | **Integrated Travel Planning Hub** | Flights, hotels, activities, itinerary management, and group coordination are brought together within one trip workspace, allowing selected travel options to become constraints or anchor points for AI itinerary planning. |
 | **Shared Group Workspace & Role Management** | A trip organiser can invite members through a shared link, with the inviter initially becoming the trip leader and the ability to transfer the leadership role to another member, providing clear responsibility for finalising group decisions. |
@@ -237,45 +237,168 @@ We use Supabase as our backend platform to manage user authentication and store 
 • Allow group members to assign tasks, update their status, and track outstanding responsibilities.
 
 
+ # 6. User Manual
+ # 1. Registering a New Account**
+If you are using jet2holiday for the first time, follow these steps to create an account : 
+1. Navigate to the Login page of the jet2holiday website https://jet2holiday-ten.vercel.app/
+![Login Page](./images/Login_page.png)
+                                       Login Page
+2. On the Login page, click **Create an account**.  
+3. Then, you will navigate to the Registration page and you will be asked to enter your **Name or Handle** in English, **Email Address, Password** with a minimum of 6 characters. 
+![Registeration Page](./images/Registeration_page.png)
+                                   Registration Page
+4. Click **Sign up** to complete the registration process. 
+5. If you already have an account, click the **Sign in** to access the system.
 
+# 2. Logging In
+If you already have an account, you can access the jet2holiday system by following these steps : 
+1. Navigate to the Login page of the jet2holiday website https://jet2holiday-ten.vercel.app/  (refer to Login Page)
+2. Enter your registered email and password.
+3. Click **Sign in** to navigate to the next dashboard. 
 
+# 3. Password Recovery
+1. If you have forgotten your password, click **Forgot Password?** (refer to Login Page) where you will be prompted to enter your registered email.
+![Reset password](./images/Reset_password.png)
+                                   Reset Password Page
+2. After entering the required information, click the **Send reset link** button.
+3. Check your inbox for an automated email containing a secure, system generated link for password changing.
+![Temporary password1](./images/Temp_password1.png)
+![Temporary password2](./images/Temp_password2.png)
+                     Temporary Password Reset Email
+![New password](./images/New_password.png)
+                               Set new password
 
+# 4. Trip Setup
+After successfully logging in, you will be redirected to the Trip Setup page. Follow these steps to create a trip: 
+![Trip Setup Page 1](./images/Trip_setup1.png)
+                                Trip Setup Page 1
+1. Key in and search for the place you want to travel.
+2. Set the travel period (e.g. 16/10/2026 -17/10/2026).
+3. After finishing setup, click the **Next** button to continue.
+4. Click the **Next** button again.
+![Trip Setup Page 2](./images/Trip_setup2.png)
+                                Trip Setup Page 2
+![Trip Setup Page 3](./images/Trip_setup3.png)
+                                Trip Setup Page 3
+5. Select your preferred options (optional), type additional requests into the text box if you have, and click the **Build my itinerary** button to complete.
+![Invite members](./images/Invite_members.png)
+                                 Invite members
+6. Invite your travel friends by sharing the invite link. You can also click “Maybe later”; the link is still available and can be found on the 01 Trip page. 
 
+# 5. Swiping cards
+Upon completing trip setup, you will be directed to the card swiping page. A message will pop up to allow you to copy and share the invite link to others trip members to invite them into the group trip. The Card Swipe page allows you to swipe or choose to like or dislike the attractions generated by AI. Follow these steps:
 
+1. The jet2holiday system will generate some destination cards. Swipe to the right or click the love button if you like the destination, swipe to the left if you dislike the location.
+![Swipe page](./images/Swipe_page.png)
+                                  02 Swipe page
+![Swipe right](./images/Swipe_right.png)
+                                    Swipe right
+![Love button](./images/Love_button.png)
+                               Click the love button
+![Swipe left](./images/Swipe_left.png)
+                                    Swipe left
+![Dislike button](./images/Dislike_button.png)
+                              Click the dislike button
+![Info button](./images/Info_button.png)
+                              Click the info button
+2. Click on the info button in the middle to get more information of the destination.
+![After Swipe](./images/After_swipe.png)
+                            After card swiping finished
+3. Once finished swiping, the system will generate a personal summary. Click the **See my summary** button to see the full summary.
+![More destination](./images/More_destination.png)
+                              Add more destination
+4. You can add any destination by clicking the **More itineraries on your mind?** button.
+![Summary](./images/Summary.png)
+                                    Summary
+5. Click the **Show me the shared plan →** to navigate to the plan page.
 
+# 6. Build the group plan
+![Plan page](./images/Plan_page.png)
+                                 03 Plan Page
+**Only the leader is allowed to click the Build the group plan button.**
+![Trip plan 1](./images/Trip_plan1.png)
+![Trip plan 2](./images/Trip_plan2.png)
+                                   Trip Plan
+Once the group has finished swiping, jet2holiday will direct you to the 03 Plan page. The Plan page lets you review the itinerary day by day, vote on each day, and confirm the final plan. Follow these steps:
+![Summary on Trip Screen](./images/Trip_summary.png)
+1. Click Show my location to see where you are on the map.
+2. Click the Summary tab to see why the plan was built this way: the group’s priorities, what the group agrees on, the activity balance, where the group split, and the constraints planned around.
+![Day_tab](./images/Day_tab.png)
+3. Click a day tab (e.g. 10.15 Thu) to view that day’s itinerary, including each place’s category, visiting time and travel distance/time to the next stop. The “Walk” / “Drive” label at the top right only shows the travel mode used for that day. 
+4. Click Like to approve it, or Rebuild to request a new version. The vote status (e.g. “0/1 voted · needs 1”) shows how many members have voted and haven’t voted.
+![After rebuild](./images/After_rebuild.png)
+                                After clicking “Rebuild”
+5. Click the Ideas tab to see places the group liked that didn’t make the itinerary. They join the plan when the group votes to rebuild a day.
+6. Once enough members have voted, click “Close voting & confirm plan” to finalise the itinerary. 
+7. After the plan is confirmed, a ”Save as PDF” button appears at the top of the page. Click it to download the plan for easier offline reference.
+8. After the plan is confirmed, the Confirmed itinerary also appears on the 01 Trip page, showing each day’s places and visiting times. Click View map to see the route on the map. 
+9. You can still suggest changes to a confirmed plan by clicking “+ Suggest a change ”. Other group members will see your suggestion and can vote on it. If everyone agrees, jet2holiday will automatically reroute and update the plan.
 
+# 7. Group Tasks
+Once the plan is ready, use the 04 Tasks page to track what the group still needs to do, such as booking flights or accommodation. Follow these steps:
+1. Open the 04 Tasks page from the navigation bar.
+![Tasks page](./images/Tasks_page.png)
+                                 04 Tasks page
+2. In the Ask the task agent box, describe what hasn’t been done yet (e.g. “Book Baba & Nyonya Heritage Museum ticket”). You can also click the microphone icon and speak instead of typing.
+3. Click “Parse tasks →”. The task agent turns your message into actionable tasks, such as booking flights, booking accommodation or preparing travel documents.
+4. Review the tasks the agent found before adding them:
+- Tick or untick the checkbox to choose which tasks to add.
+- Use the dropdown to choose who the task is for: Anyone — leave open, or a specific member.
+![Task board](./images/Task_board.png)
+5. The added tasks appear on the Task board, grouped by status:
+- Open: no one has taken it yet.
+- Assigned: a member has accepted it or has been assigned to it.
+- Done: the task is completed.
+6. On an Open task, click “Accept →” to take it yourself, or click Assign... to give it to another member. The card shows who added it and who accepted it.
+7. On an Assigned task, click Mark done when it is finished so the group knows it is completed. If you can no longer do it, click Release to make it open again for others.
+8. Click “×” on a task card to remove it.
+9. On the 01 Trip page, the Shared tasks card shows task progress (e.g. 2/5), so the group can see a summary of tasks at a glance.
 
+# 8. Trip page
+The Trip page is the home page of your group trip. It gives you a summary of the trip, the confirmed itinerary, your preferences, bookings, shared tasks and group progress in one place. Follow these steps:
+1. Open the 01 Trip page from the navigation bar. The top banner shows the destination, travel dates, number of days and number of members.
+2. Check the Confirmed itinerary to see each day’s places and visiting times. This appears after the plan is confirmed. Click View map to see the route on the map.
+3. Check Your preferences saved to see how many places you liked and skipped, and your travel style (e.g. “Scenic Nature Explorer”). Click Review My Swipes to go back and review your swipes.
+4. Check Trip basics to see the group’s bookings for Stay and Flight. If nothing is picked yet, click the **Manage Bookings** button to select preferred stay and flight. After selection, click the Book now! button to make bookings.
+![Trip basics](./images/Trip_basics.png)
+                                  Trip basics in 01 Trip Page
+![Manage Bookings](./images/Manage_booking.png)
+                            After clicking Manage Bookings button
+![Set Stays](./images/Set_stay.png)
+                              After clicking Set stays→ button
+![Set Flights](./images/Set_flight.png)
+                             After clicking Set flights→ button
+![After clicking](./images/After_clicking.png)
+                                     After selecting 
+5. After selecting preferred stay and flight, you can click **Book now!** button to make booking manually(you will be directed to google travel website).
+![Shared Tasks](./images/Shared_Tasks.png)
+                                      Shared Tasks
+6. Check Shared tasks to see task progress (e.g. 0/2) and the list of tasks, with the member name shown beside each assigned task. Tasks are created and updated on the 04 Tasks page.
+7. Check Group alignment to see how many members have swiped and how many profiles are ready.
+8. Click **Invite More Friends →** to share the invite link and bring more members into the trip.
 
+# 9. Group dynamics
+The 05 Group page shows how well the plan fits everyone in the group, and the house rules the group follows on the trip. Follow these steps:
+![Group page](./images/Group_page.png)
+                                       05 Group page
+1. Open the 05 Group page from the navigation bar.
+2. Check “Everyone said yes” to see the places every member liked. These are locked into the plan.
+3. Check “The group was divided” to see places where members disagreed. The disagreement is resolved by the weight of each member’s reasons, not by simple votes.
+4. Check “Only one person loved” to see places that only one member liked. These become optional stops and never take up a main slot in the plan.
+5. Check “Per-person satisfaction” to see whether everyone’s satisfaction is above the 75% minimum.
+6. Check “Satisfaction by person” to see each member’s satisfaction score out of 100 for the plan.
+7. Read the “House rules” for the group’s travel guidelines.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# 10. Profile page
+The Profile page lets you manage your account and switch between your trips. Follow these steps:
+![Profile page](./images/Profile_page.png)
+                               Upper Part of Profile Page
+1. Click your **profile icon** at the top right to open the Profile page.
+2. In Account Details, edit your Display name / Username and optionally add a Profile image URL. Click **Save Profile Details** to save.
+3. In Password & Security, click **Change Password** to update your password.
+4. jet2holiday Activity shows your travel style and the number of places you liked, skipped and gave reasons for.
+![Bottom part](./images/Bottom_part.png)
+                             Bottom Part of Profile Page
+5. In My Trips, click **Switch** to open another trip, or click **Leave** to leave the current trip.
+6. Click **Create New Trip** to plan a new trip, or **Start over** to restart the current trip.
+7. Click **Log out** to sign out.
