@@ -127,8 +127,17 @@ function Shell() {
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+    // Flipping data-theme fires every colour transition on the page at once, so
+    // the switch smears. Suppress transitions, apply the attribute, then restore
+    // them after the next frame (see src/motion.css).
+    const root = document.documentElement;
+    root.classList.add("theme-switching");
+    root.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => {
+      root.classList.remove("theme-switching");
+    }));
+    return () => cancelAnimationFrame(raf);
   }, [theme]);
 
   const AUTH_PATHS = ["/setup/step1", "/setup/step2", "/setup/step3", "/login", "/register", "/forgot-password", "/reset-password"];

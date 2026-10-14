@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import {
   CheckCircle,
   CircleNotch,
   Microphone,
   StopCircle,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { useAuth } from "../context/useAuth";
 import { parseTasksFromMessage } from "../services/taskAgent";
 import { getTrip, getTripMembers } from "../services/tripService";
@@ -410,12 +411,15 @@ export default function TasksScreen({ useAppState }) {
     return () => clearInterval(logsInterval.current);
   }, [loading]);
 
-  // Auto scroll to bottom of logs
+  // Auto scroll to bottom of logs. The agent streams a line every ~150ms, so a
+  // smooth scroll here runs for the whole parse — a documented vestibular
+  // trigger. Jump instantly instead when the user has asked for less motion.
+  const reduceMotion = useReducedMotion();
   useEffect(() => {
     if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+      logsEndRef.current.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
     }
-  }, [logs]);
+  }, [logs, reduceMotion]);
 
   /* ---------------------------------------------------------------- *
    * Agent
@@ -532,10 +536,6 @@ export default function TasksScreen({ useAppState }) {
 
   return (
     <section className="screen active screen-tasks">
-      <style>{`
-        @keyframes custom-spin { 100% { transform: rotate(360deg); } }
-        .spin-anim { animation: custom-spin 1s linear infinite; }
-      `}</style>
       {/* ── Agent chat section ── */}
       <div className="tasks-agent-wrap">
         <div className="tasks-section-head">
@@ -571,7 +571,7 @@ export default function TasksScreen({ useAppState }) {
               disabled={loading || transcribing}
               title={isRecording ? "Stop recording" : "Record voice"}
             >
-              {isRecording ? <StopCircle size={24} color="var(--danger, red)" weight="fill" /> : <Microphone size={24} />}
+              {isRecording ? <StopCircle size={24} weight="fill" /> : <Microphone size={24} />}
             </button>
           </div>
 
@@ -596,7 +596,7 @@ export default function TasksScreen({ useAppState }) {
 
           {/* AI Logs Stream */}
           {(logs.length > 0 || loading) && !preview && (
-            <div className="task-logs" style={{ marginTop: 16, fontSize: "0.85rem", color: "var(--text-muted)", background: "var(--bg-card)", padding: 8, borderRadius: 6, maxHeight: 150, overflowY: "auto", fontFamily: "monospace" }}>
+            <div className="task-logs" style={{ marginTop: 16, fontSize: "0.85rem", color: "var(--text-muted)", background: "var(--bg-card)", padding: 8, borderRadius: 6, maxHeight: 150, overflowY: "auto", overscrollBehavior: "contain", fontFamily: "monospace" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                 {loading && <CircleNotch size={14} className="spin-anim" style={{ flexShrink: 0, marginTop: 2 }} />}
                 <div style={{ display: "flex", flexDirection: "column", gap: 2, width: "100%" }}>

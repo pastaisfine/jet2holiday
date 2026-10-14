@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 
+// Stagger increment, in ms. Rows arrive 100ms apart so the block reads as a
+// ranked list rather than one flat slab. Matches the project's motion language
+// and the gate for it lives in src/motion.css.
+const STAGGER_MS = 100;
+
 // The identity card: who the traveller is, how much evidence that is standing
 // on, and the categories their likes concentrate in.
 //
@@ -55,14 +60,23 @@ export default function StyleCard({
           </div>
 
           <div className="trait">
-            {interestBreakdown.map((b) => (
+            {interestBreakdown.map((b, i) => (
               <div key={b.category}>
                 <div className="row">
                   <b>{b.label}</b>
                   <span className="v">{b.percent}%</span>
                 </div>
                 <div className="bar">
-                  <i style={animate ? { width: `${b.percent}%` } : { width: 0 }} />
+                  {/* Per-row delay, so the list reads top-down. The width
+                      transition itself is switched off under reduced motion in
+                      src/motion.css. */}
+                  <i
+                    style={
+                      animate
+                        ? { width: `${b.percent}%`, transitionDelay: `${i * STAGGER_MS}ms` }
+                        : { width: 0, transitionDelay: `${i * STAGGER_MS}ms` }
+                    }
+                  />
                 </div>
               </div>
             ))}

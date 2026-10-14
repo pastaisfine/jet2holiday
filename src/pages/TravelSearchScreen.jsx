@@ -15,7 +15,7 @@ import {
   Sparkle,
   Users,
   CalendarBlank,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import {
   searchFlights,
   searchHotels,

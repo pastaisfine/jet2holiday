@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Airplane, Bed } from "phosphor-react";
+import { Airplane, Bed } from "@phosphor-icons/react";
 import { HOTELS, FLIGHTS } from "../data/travel";
 
 export default function TravelScreen({ useAppState }) {

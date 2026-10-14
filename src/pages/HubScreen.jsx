@@ -272,6 +272,11 @@ export default function HubScreen({ useAppState }) {
     gap: 16
   };
 
+  // Concentric radii: a card nested inside another card at its padding edge has
+  // to step out by exactly the inset, or the shared 24px reads as one broken
+  // curve instead of two nested arcs. 24 (inner) + 20 (padding) + 1 (border).
+  const nestedCardStyle = { ...cardStyle, borderRadius: 45 };
+
   const primaryBtnStyle = {
     background: "var(--fg)",
     color: "var(--surface)",
@@ -614,7 +619,7 @@ export default function HubScreen({ useAppState }) {
           )}
 
           {/* 1. Who's Swiped Section — Real members */}
-          <section style={cardStyle}>
+          <section style={nestedCardStyle}>
             <div>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Group alignment</h3>
               <div style={{ fontSize: 14, color: "var(--muted)", marginTop: 4 }}>
@@ -676,7 +681,7 @@ export default function HubScreen({ useAppState }) {
                 </div>
               )}
             </div>
-            <ProgressBar value={Math.round((effectiveDoneCount / effectiveTotalMembers) * 100)} height={8} color="var(--fg)" bgColor="var(--bg)" />
+            <ProgressBar value={Math.round((effectiveDoneCount / effectiveTotalMembers) * 100)} accent />
 
             {/* Share invite link in Hub */}
             {inviteLink && (

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Compass, Cards, MapTrifold, CheckSquareOffset, Users } from "phosphor-react";
+import { Compass, Cards, MapTrifold, CheckSquareOffset, Users } from "@phosphor-icons/react";
 import LineSidebar from "./LineSidebar";
 
 const TABS = [

@@ -77,6 +77,10 @@
   --r-card: 20px;
   --r-control: 12px;
   --r-pill: 9999px;
+  /* Content-image outline. Pure black/white only: a tinted or accent outline
+     shows as a coloured fringe on the photo edge. Inset by 1px so it reads as
+     a boundary rather than a frame. */
+  --img-outline: oklch(0 0 0 / 0.1);
   --gap: 14px;
   --card-pad: 20px;
   --section-pad: 80px;
@@ -162,20 +166,6 @@ textarea {
   }
 }
 
-@keyframes maskReveal {
-  from {
-    opacity: 0;
-    clip-path: inset(0 0 18% 0);
-    transform: translateY(14px);
-  }
-
-  to {
-    opacity: 1;
-    clip-path: inset(0 0 0 0);
-    transform: none;
-  }
-}
-
 @keyframes kenburns {
   from {
     transform: scale(1.02) translate(0, 0);
@@ -198,33 +188,8 @@ textarea {
   }
 }
 
-@keyframes ambient {
-  from {
-    transform: translateY(0);
-  }
-
-  to {
-    transform: translateY(-6px);
-  }
-}
-
-/* ─── reduced motion ── */
-@media (prefers-reduced-motion: reduce) {
-
-  .mask-reveal,
-  .stagger>*,
-  .ambient {
-    animation: none;
-  }
-
-  .hover-lift {
-    transition: none;
-  }
-
-  .hover-lift:hover {
-    transform: none;
-  }
-}
+/* ─── reduced motion ──
+   Lives in src/motion.css, which is imported last and covers the whole app. */
 
 /* ─── generic ── */
 .eyebrow {
@@ -256,11 +221,15 @@ textarea {
   font-weight: 600;
   letter-spacing: -0.01em;
   text-align: center;
-  transition: transform .06s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+  /* Only `transform` is on the press; the rest is the hover/focus colour work.
+     150ms ease-out is the press spec — see src/motion.css for the gate. */
+  transition: transform .15s ease-out, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.btn:active {
-  transform: scale(0.98);
+/* `:not(:disabled)` so a control that cannot act never looks like it did. */
+.btn:active:not(:disabled) {
+  transform: scale(.96);
 }
 
 .btn-primary {
@@ -270,10 +239,12 @@ textarea {
   box-shadow: 0 8px 20px -8px rgba(25, 45, 30, 0.35);
 }
 
-.btn-primary:hover {
-  background: color-mix(in srgb, var(--fg) 88%, white);
-  border-color: color-mix(in srgb, var(--fg) 88%, white);
-  box-shadow: 0 12px 24px -8px rgba(25, 45, 30, 0.45);
+@media (hover: hover) {
+  .btn-primary:hover {
+      background: color-mix(in srgb, var(--fg) 88%, white);
+      border-color: color-mix(in srgb, var(--fg) 88%, white);
+      box-shadow: 0 12px 24px -8px rgba(25, 45, 30, 0.45);
+  }
 }
 
 .btn-coral {
@@ -283,9 +254,11 @@ textarea {
   box-shadow: 0 8px 20px -8px rgba(25, 45, 30, 0.35);
 }
 
-.btn-coral:hover {
-  background: color-mix(in srgb, var(--fg) 88%, white);
-  border-color: color-mix(in srgb, var(--fg) 88%, white);
+@media (hover: hover) {
+  .btn-coral:hover {
+      background: color-mix(in srgb, var(--fg) 88%, white);
+      border-color: color-mix(in srgb, var(--fg) 88%, white);
+  }
 }
 
 .btn-secondary {
@@ -295,10 +268,31 @@ textarea {
   box-shadow: 0 2px 8px -4px rgba(25, 45, 30, 0.05);
 }
 
-.btn-secondary:hover {
-  border-color: var(--fg);
-  color: var(--fg);
-  background: var(--bg);
+/* Used by the record/stop toggle on the tasks screen. It was referenced from
+   JSX with no rule behind it, so the button lost all its styling the moment
+   recording started. --nom is the existing brick "no/stop" role token, and the
+   shadow is mixed from it rather than written as a literal. */
+.btn-danger {
+  background: var(--nom);
+  color: var(--surface);
+  border-color: var(--nom);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--nom) 35%, transparent);
+}
+
+@media (hover: hover) {
+
+  .btn-danger:hover {
+    background: color-mix(in srgb, var(--nom) 88%, white);
+    border-color: color-mix(in srgb, var(--nom) 88%, white);
+  }
+}
+
+@media (hover: hover) {
+  .btn-secondary:hover {
+      border-color: var(--fg);
+      color: var(--fg);
+      background: var(--bg);
+  }
 }
 
 .btn-ghost {
@@ -308,9 +302,11 @@ textarea {
   padding: 10px 14px;
 }
 
-.btn-ghost:hover {
-  color: var(--fg);
-  background: var(--bg-alt);
+@media (hover: hover) {
+  .btn-ghost:hover {
+      color: var(--fg);
+      background: var(--bg-alt);
+  }
 }
 
 .btn-block {
@@ -337,9 +333,12 @@ textarea {
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
-  transition: all .14s ease;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
+/* `font-weight` is deliberately not transitioned: it is a font property, so
+   every selection would force a reflow. */
 .chip.sel {
   background: var(--fg);
   border-color: var(--fg);
@@ -407,8 +406,12 @@ textarea {
   box-shadow: 0 4px 12px -5px rgba(150, 112, 96, .5);
 }
 
+/* The transparent border is load-bearing: forced-colors mode strips every
+   box-shadow, so without it the ring that marks a completed avatar — and the
+   halo around its ✓ badge — disappear entirely. */
 .avatar.done {
   position: relative;
+  border: 1px solid transparent;
   box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--gerund);
 }
 
@@ -427,55 +430,10 @@ textarea {
   display: grid;
   place-items: center;
   text-shadow: none;
+  border: 1px solid transparent;
   box-shadow: 0 0 0 2px var(--surface);
 }
 
-/* ─── motion ── */
-.mask-reveal {
-  animation: maskReveal .7s cubic-bezier(.22, .7, .28, 1) both;
-}
-
-.stagger>* {
-  animation: maskReveal .6s cubic-bezier(.22, .7, .28, 1) both;
-}
-
-.stagger>*:nth-child(1) {
-  animation-delay: .05s;
-}
-
-.stagger>*:nth-child(2) {
-  animation-delay: .12s;
-}
-
-.stagger>*:nth-child(3) {
-  animation-delay: .19s;
-}
-
-.stagger>*:nth-child(4) {
-  animation-delay: .26s;
-}
-
-.stagger>*:nth-child(5) {
-  animation-delay: .33s;
-}
-
-.stagger>*:nth-child(6) {
-  animation-delay: .40s;
-}
-
-.hover-lift {
-  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
-}
-
-.hover-lift:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lift);
-  border-color: var(--bg-alt);
-}
-
-.ambient {
-  animation: ambient 6s ease-in-out infinite alternate;
-}
 
 /* ─── bento grid ── */
 .bento {

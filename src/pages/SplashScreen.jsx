@@ -1,6 +1,6 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
-import { ArrowRight } from "phosphor-react";
+import { ArrowRight } from "@phosphor-icons/react";
 
 export default function SplashScreen() {
   const navigate = useNavigate();

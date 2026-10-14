@@ -10,7 +10,7 @@ import {
   Peace,
   Sparkle,
   Star,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { useAuth } from "../context/useAuth";
 import ProgressBar from "../components/ProgressBar";
 import { EMPTY_PREFERENCES } from "../components/PreferenceForm";
@@ -233,7 +233,11 @@ export default function SetupStep3Screen({ useAppState }) {
                 fontWeight: 600,
                 cursor: "pointer",
                 textAlign: "left",
-                transition: "all 0.15s ease",
+                // border-width is animated with the colour so the 1px→2px
+                // selection change eases instead of snapping. tap-highlight is
+                // cleared because the button draws its own selected fill.
+                transition: "background-color .15s ease, border-color .15s ease, color .15s ease, border-width .15s ease",
+                WebkitTapHighlightColor: "transparent",
               }}
             >
               <Icon size={18} weight={isSelected ? "fill" : "regular"} />

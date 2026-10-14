@@ -11,6 +11,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="no-referrer" />
     <title>jet2holiday — the group trip that everyone says yes to</title>
+    <!-- Apply the stored theme before first paint. App.jsx sets data-theme in an
+         effect, which is post-paint, so without this every dark-mode cold load
+         flashes the light theme for a frame. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme") ||
+            (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) { /* private mode: fall through to the light default */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

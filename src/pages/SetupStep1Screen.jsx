@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { GlobeHemisphereWest, CalendarBlank } from "phosphor-react";
+import { GlobeHemisphereWest, CalendarBlank } from "@phosphor-icons/react";
 import { searchPlaces } from "../services/placesAutocomplete";
 import ProgressBar from "../components/ProgressBar";
 import { parseTripDate, todayInputValue } from "../utils/date";

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Crown } from "phosphor-react";
+import { Crown } from "@phosphor-icons/react";
 import { useAuth } from "../context/useAuth";
 import ProgressBar from "../components/ProgressBar";
 

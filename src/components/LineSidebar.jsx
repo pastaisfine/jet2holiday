@@ -37,6 +37,11 @@ export default function LineSidebar({
   const activeRef = useRef(defaultActive);
   const smoothingRef = useRef(smoothing);
   const [activeIndex, setActiveIndex] = useState(defaultActive);
+  const reducedMotionRef = useRef(
+    typeof window !== "undefined"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : { matches: false, addEventListener: () => {}, removeEventListener: () => {} },
+  );
 
   const runFrame = useCallback(function runFrame(now) {
     const dt = Math.min((now - lastRef.current) / 1000, 0.05);
@@ -67,9 +72,30 @@ export default function LineSidebar({
     rafRef.current = requestAnimationFrame(runFrame);
   }, [runFrame]);
 
+  // Pointer proximity is a high-frequency interaction, so under reduced motion
+  // the eased rAF loop is skipped entirely and --effect snaps to its discrete
+  // 0/1 value. The active row keeps its colour cue; nothing animates.
+  const applyDiscrete = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    itemRefs.current.forEach((element, index) => {
+      if (!element) return;
+      const value = activeRef.current === index ? 1 : 0;
+      currentRef.current[index] = value;
+      element.style.setProperty("--effect", String(value));
+    });
+  }, []);
+
   const handlePointerMove = useCallback((event) => {
     const list = listRef.current;
     if (!list) return;
+
+    if (reducedMotionRef.current.matches) {
+      applyDiscrete();
+      return;
+    }
 
     const pointerY = event.clientY - list.getBoundingClientRect().top;
     const curve = FALLOFF_CURVES[falloff] ?? FALLOFF_CURVES.linear;
@@ -80,7 +106,15 @@ export default function LineSidebar({
       targetsRef.current[index] = curve(Math.max(0, 1 - Math.abs(pointerY - center) / proximityRadius));
     });
     startLoop();
-  }, [falloff, proximityRadius, startLoop]);
+  }, [falloff, proximityRadius, startLoop, applyDiscrete]);
+
+  // Follow the OS setting live, so toggling it takes effect without a reload.
+  useEffect(() => {
+    const mq = reducedMotionRef.current;
+    const onChange = () => (mq.matches ? applyDiscrete() : undefined);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [applyDiscrete]);
 
   const handlePointerLeave = useCallback(() => {
     targetsRef.current = targetsRef.current.map(() => 0);

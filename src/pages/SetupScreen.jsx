@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Crown } from "phosphor-react";
+import { Crown } from "@phosphor-icons/react";
 import { useAuth } from "../context/useAuth";
 import { dayCount } from "../utils/date";
 import BottomSheet from "../components/BottomSheet";

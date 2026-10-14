@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Moon, SunDim } from "phosphor-react";
+import { Moon, SunDim } from "@phosphor-icons/react";
 import { useAuth } from "../context/useAuth";
 
 export default function AppHeader({ trip, back, backLabel, invert, theme, toggleTheme }) {

@@ -942,7 +942,7 @@ return (
               margin: "0 20px 10px",
               padding: "8px 12px",
               background: "var(--surface)",
-              borderRadius: "var(--radius-sm)",
+              borderRadius: "var(--r-control)",
               border: "1px solid var(--border)",
               fontSize: 12,
               color: "var(--muted)",

@@ -27,8 +27,20 @@
   box-shadow: var(--infinite-spiral-card-shadow, 0 14px 38px rgb(8 6 18 / 0.2));
   transform-style: preserve-3d;
   backface-visibility: hidden;
-  will-change: transform, opacity, filter;
   text-decoration: none;
+}
+
+/* Promoted on demand, not permanently. The render loop also writes opacity and
+   filter, but this rule applies to every card in the deck — including the ones
+   it has faded to opacity 0 — and holding three promoted properties across all
+   of them exhausts GPU memory. `transform` is the one that actually needs the
+   hint; the browser promotes the rest on demand if the loop turns out to
+   stutter. Dropped entirely when the user has asked for less motion, because
+   the auto-drift stops there anyway. */
+@media (prefers-reduced-motion: no-preference) {
+  .infinite-spiral__item {
+    will-change: transform;
+  }
 }
 
 .infinite-spiral__image {

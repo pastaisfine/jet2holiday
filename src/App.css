@@ -128,14 +128,17 @@
   color: #fff;
 }
 
-.appheader .hd-back:hover {
-  color: var(--fg);
-  border-color: var(--accent);
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .appheader .hd-back:hover {
+      color: var(--fg);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+  }
 }
-
-[data-theme="dark"] .appheader .hd-back:hover {
-  color: #fff;
+@media (hover: hover) {
+  [data-theme="dark"] .appheader .hd-back:hover {
+      color: #fff;
+  }
 }
 
 /* photo-backed screens: header floats over imagery */
@@ -165,10 +168,12 @@
   backdrop-filter: blur(6px);
 }
 
-.appheader.invert .hd-back:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, .3);
-  border-color: rgba(255, 255, 255, .5);
+@media (hover: hover) {
+  .appheader.invert .hd-back:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, .3);
+      border-color: rgba(255, 255, 255, .5);
+  }
 }
 
 /* ─── persistent sidebar navigation ── */
@@ -212,7 +217,9 @@
   justify-content: center;
   border-radius: 24px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* Tab switch is high-frequency: 150ms, opacity + colour only. */
+  transition: opacity .15s ease, color .15s ease;
+  -webkit-tap-highlight-color: transparent;
   padding: 0;
 }
 
@@ -277,6 +284,7 @@
     z-index: 50;
     width: var(--sidebar-width);
     overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--bg);
     border-right: 1px solid var(--border);
     backdrop-filter: saturate(180%) blur(18px);
@@ -609,6 +617,7 @@
 .preference-sheet {
   max-height: 88vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .preference-group {
@@ -634,7 +643,7 @@
 
 .preference-option {
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 9px 12px;
   background: var(--surface);
   color: var(--fg);
@@ -709,9 +718,11 @@
   transition: border-color .15s ease, background .15s ease;
 }
 
-.cal-navbtn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .cal-navbtn:hover:not(:disabled) {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+  }
 }
 
 .cal-navbtn:disabled {
@@ -757,8 +768,10 @@
   transition: background .12s ease, color .12s ease, box-shadow .12s ease;
 }
 
-.cal-day:hover:not(.disabled):not(.empty) {
-  background: var(--bg-alt);
+@media (hover: hover) {
+  .cal-day:hover:not(.disabled):not(.empty) {
+      background: var(--bg-alt);
+  }
 }
 
 .cal-day.empty {
@@ -813,8 +826,10 @@
   text-decoration: underline;
 }
 
-.cal-clear:hover {
-  color: var(--fg);
+@media (hover: hover) {
+  .cal-clear:hover {
+      color: var(--fg);
+  }
 }
 
 .friends {
@@ -836,8 +851,10 @@
   transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
 }
 
-.friendrow:hover {
-  border-color: var(--accent);
+@media (hover: hover) {
+  .friendrow:hover {
+      border-color: var(--accent);
+  }
 }
 
 .friendrow.sel {
@@ -867,7 +884,7 @@
   font-size: 12px;
   color: transparent;
   flex: none;
-  transition: all .15s ease;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
 }
 
 .friendrow.sel .fcheck {
@@ -900,7 +917,8 @@
   place-items: center;
   flex: none;
   margin-left: auto;
-  transition: all .15s ease;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* 1. Make name/title container expand */
@@ -914,10 +932,12 @@
   margin-right: 42px;
 }
 
-.leader-xfer:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .leader-xfer:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-soft);
+  }
 }
 
 .friendrow.is-leader .leader-xfer {
@@ -967,8 +987,10 @@
   transition: background .15s ease;
 }
 
-.datesummary:hover {
-  background: rgba(238, 127, 101, .2);
+@media (hover: hover) {
+  .datesummary:hover {
+      background: rgba(238, 127, 101, .2);
+  }
 }
 
 .datesummary .caret {
@@ -1050,9 +1072,11 @@
   transition: background .15s ease, border-color .15s ease;
 }
 
-.invite-btn:hover {
-  background: rgba(200, 182, 226, .34);
-  border-color: #A78FCC;
+@media (hover: hover) {
+  .invite-btn:hover {
+      background: rgba(200, 182, 226, .34);
+      border-color: #A78FCC;
+  }
 }
 
 .invite-btn .plus {
@@ -1163,8 +1187,10 @@
   transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
 }
 
-.tlrow:hover {
-  border-color: var(--accent);
+@media (hover: hover) {
+  .tlrow:hover {
+      border-color: var(--accent);
+  }
 }
 
 .tlrow.sel {
@@ -1176,7 +1202,7 @@
 .tl-thumb {
   width: 56px;
   height: 56px;
-  border-radius: 13px;
+  border-radius: var(--r-control);
   background-size: cover;
   background-position: center;
   flex: none;
@@ -1317,8 +1343,10 @@
   flex-shrink: 0;
 }
 
-.book-now-btn:hover {
-  background: #e0e0e0;
+@media (hover: hover) {
+  .book-now-btn:hover {
+      background: #e0e0e0;
+  }
 }
 
 @media (min-width: 900px) {
@@ -1352,6 +1380,10 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  /* Pure neutral, inset 1px. Never a palette colour: a tinted outline
+     reads as a coloured fringe on the photo edge. */
+  outline: 1px solid var(--img-outline);
+  outline-offset: -1px;
 }
 
 .hub-body {
@@ -1641,6 +1673,10 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Pure neutral, inset 1px. Never a palette colour: a tinted outline
+     reads as a coloured fringe on the photo edge. */
+  outline: 1px solid var(--img-outline);
+  outline-offset: -1px;
 }
 
 .swcard .ph .veil {
@@ -1842,7 +1878,7 @@
   padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 12px);
+  border-radius: var(--r-control);
 }
 
 .swipe-history-name {
@@ -1958,6 +1994,14 @@
   to { transform: rotate(360deg); }
 }
 
+/* The transcription spinner on the tasks screen used to be injected as a raw
+   <style> string from the component, which meant it sat outside the
+   reduced-motion gate in motion.css. Same keyframe, same place as its
+   siblings now. */
+.spin-anim {
+  animation: skeleton-spin 1s linear infinite;
+}
+
 .skeleton-status-title {
   font-family: var(--font-display, inherit);
   font-weight: 700;
@@ -1997,15 +2041,12 @@
   place-items: center;
   background: var(--surface);
   box-shadow: 0 12px 26px -12px rgba(150, 112, 96, .5);
-  transition: transform .12s ease, background .15s ease, box-shadow .15s ease;
+  transition: transform .15s ease-out, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.sw-btn:hover {
-  transform: translateY(-2px) scale(1.06);
-}
-
-.sw-btn:active {
-  transform: scale(.94);
+.sw-btn:active:not(:disabled) {
+  transform: scale(.96);
 }
 
 .sw-btn svg {
@@ -2017,22 +2058,30 @@
   color: var(--nom);
 }
 
-.sw-btn.no:hover {
-  background: var(--nom);
-  color: #fff;
-  border-color: var(--nom);
-  box-shadow: 0 14px 28px -12px rgba(232, 112, 92, .75);
+@media (hover: hover) {
+  .sw-btn:hover {
+    transform: translateY(-2px) scale(1.06);
+  }
+
+  .sw-btn.no:hover {
+      background: var(--nom);
+      color: #fff;
+      border-color: var(--nom);
+      box-shadow: 0 14px 28px -12px rgba(232, 112, 92, .75);
+  }
 }
 
 .sw-btn.yes {
   color: var(--gerund);
 }
 
-.sw-btn.yes:hover {
-  background: var(--gerund);
-  color: #fff;
-  border-color: var(--gerund);
-  box-shadow: 0 14px 28px -12px rgba(95, 185, 155, .75);
+@media (hover: hover) {
+  .sw-btn.yes:hover {
+      background: var(--gerund);
+      color: #fff;
+      border-color: var(--gerund);
+      box-shadow: 0 14px 28px -12px rgba(95, 185, 155, .75);
+  }
 }
 
 .sw-empty {
@@ -2102,6 +2151,7 @@
   transition: transform .26s cubic-bezier(.32, .72, .25, 1);
   max-height: 84%;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sheet.open {
@@ -2144,7 +2194,11 @@
   font-size: 13px;
   font-weight: 550;
   min-height: 44px;
-  transition: all .14s ease;
+  /* transform is named deliberately: the hover lift is 1px of decoration on top
+     of the .sel colour swap. motion.css drops it under reduced motion. */
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease,
+    box-shadow .14s ease, transform .14s ease;
+  -webkit-tap-highlight-color: transparent;
   cursor: pointer;
   color: var(--fg);
 }
@@ -2164,9 +2218,11 @@
   border-color: rgba(95, 185, 155, .38);
 }
 
-.reason-chip:hover {
-  transform: translateY(-1px);
-  border-color: var(--accent);
+@media (hover: hover) {
+  .reason-chip:hover {
+      transform: translateY(-1px);
+      border-color: var(--accent);
+  }
 }
 
 .reason-chip.sel {
@@ -2221,6 +2277,10 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Pure neutral, inset 1px. Never a palette colour: a tinted outline
+     reads as a coloured fringe on the photo edge. */
+  outline: 1px solid var(--img-outline);
+  outline-offset: -1px;
 }
 
 .detail-hero .veil {
@@ -2248,8 +2308,10 @@
   transition: background .15s ease;
 }
 
-.detail-close:hover {
-  background: rgba(46, 39, 35, .75);
+@media (hover: hover) {
+  .detail-close:hover {
+      background: rgba(46, 39, 35, .75);
+  }
 }
 
 .detail-body {
@@ -2336,6 +2398,7 @@
   gap: 4px;
   max-height: 220px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .addplace-result {
@@ -2352,9 +2415,11 @@
   transition: border-color .15s ease, background .15s ease;
 }
 
-.addplace-result:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .addplace-result:hover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+  }
 }
 
 .apr-main {
@@ -2402,7 +2467,10 @@
   object-fit: cover;
   border-radius: 14px;
   margin-top: 12px;
-  border: 1px solid var(--border);
+  /* Pure neutral, inset 1px. An accent ring here reads as a brand accent
+     rather than a photo boundary. */
+  outline: 1px solid var(--img-outline);
+  outline-offset: -1px;
 }
 
 .addplace-map-placeholder {
@@ -3121,11 +3189,14 @@
   color: var(--muted);
   min-height: 44px;
   cursor: pointer;
-  transition: all .16s ease;
+  transition: background-color .16s ease, color .16s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.seg button:hover {
-  color: var(--fg);
+@media (hover: hover) {
+  .seg button:hover {
+      color: var(--fg);
+  }
 }
 
 .seg button.sel {
@@ -3198,8 +3269,10 @@
   transition: border-color .16s ease, box-shadow .16s ease;
 }
 
-.stop:hover {
-  border-color: var(--accent);
+@media (hover: hover) {
+  .stop:hover {
+      border-color: var(--accent);
+  }
 }
 
 .stop.open {
@@ -3363,7 +3436,6 @@
     box-sizing: border-box;
     text-align: left;
   }
-
 
   .plan-head .day {
     font-size: 32px;
@@ -3596,8 +3668,10 @@
   text-decoration: none;
 }
 
-.auth-link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .auth-link:hover {
+      text-decoration: underline;
+  }
 }
 
 .auth-link-subtle {
@@ -3605,8 +3679,10 @@
   text-decoration: none;
 }
 
-.auth-link-subtle:hover {
-  color: var(--fg);
+@media (hover: hover) {
+  .auth-link-subtle:hover {
+      color: var(--fg);
+  }
 }
 
 .verify-notice {
@@ -3644,14 +3720,17 @@
   color: #fff;
 }
 
-.appheader .hd-login-link:hover {
-  border-color: var(--accent);
-  color: var(--fg);
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .appheader .hd-login-link:hover {
+      border-color: var(--accent);
+      color: var(--fg);
+      background: var(--accent-soft);
+  }
 }
-
-[data-theme="dark"] .appheader .hd-login-link:hover {
-  color: #fff;
+@media (hover: hover) {
+  [data-theme="dark"] .appheader .hd-login-link:hover {
+      color: #fff;
+  }
 }
 
 .appheader.invert .hd-login-link {
@@ -3661,14 +3740,17 @@
   border-radius: var(--r-pill);
 }
 
-.appheader.invert .hd-login-link:hover {
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .appheader.invert .hd-login-link:hover {
+      border-color: var(--accent);
+      color: var(--accent-ink);
+      background: var(--accent-soft);
+  }
 }
-
-[data-theme="dark"] .appheader.invert .hd-login-link:hover {
-  color: #fff;
+@media (hover: hover) {
+  [data-theme="dark"] .appheader.invert .hd-login-link:hover {
+      color: #fff;
+  }
 }
 
 .appheader .hd-user-btn {
@@ -3696,7 +3778,10 @@
   height: 28px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1.5px solid var(--accent);
+  /* Pure neutral, inset 1px. An accent ring here reads as a brand accent
+     rather than a photo boundary. */
+  outline: 1px solid var(--img-outline);
+  outline-offset: -1px;
 }
 
 /* profile screen */
@@ -3741,6 +3826,10 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Pure neutral, inset 1px. Never a palette colour: a tinted outline
+     reads as a coloured fringe on the photo edge. */
+  outline: 1px solid var(--img-outline);
+  outline-offset: -1px;
 }
 
 .profile-avatar-fallback {
@@ -3856,6 +3945,10 @@
 
   --shadow: 0 16px 38px -20px rgba(0, 0, 0, 0.70);
   --shadow-lift: 0 26px 54px -26px rgba(0, 0, 0, 0.85);
+
+  /* Flips to the white half of the neutral pair — see the light-mode
+     definition in index.css for why this is never a palette colour. */
+  --img-outline: oklch(1 0 0 / 0.1);
 
   --ink: oklch(96% 0.012 101.5);
 }
@@ -4030,11 +4123,13 @@ button.btn-primary,
   box-shadow: 0 10px 22px -12px rgba(0, 0, 0, 0.55) !important;
 }
 
-.btn-primary:hover,
-[data-theme="dark"] .btn-primary:hover {
-  background-color: #423831 !important;
-  color: #FFFDFA !important;
-  border-color: #423831 !important;
+@media (hover: hover) {
+  .btn-primary:hover,
+  [data-theme="dark"] .btn-primary:hover {
+      background-color: #423831 !important;
+      color: #FFFDFA !important;
+      border-color: #423831 !important;
+  }
 }
 
 /* Fix active toggle buttons (like "Balanced" filter pill) */
@@ -4125,6 +4220,7 @@ button.btn-primary,
   display: flex;
   gap: 7px;
   overflow-x: auto;
+  overscroll-behavior: contain;
   padding: 3px 1px 8px;
   scrollbar-width: thin;
 }
@@ -4264,9 +4360,11 @@ button.btn-primary,
   font-weight: 800;
 }
 
-.stop-menu-button:hover {
-  background: var(--bg-alt);
-  color: var(--fg);
+@media (hover: hover) {
+  .stop-menu-button:hover {
+      background: var(--bg-alt);
+      color: var(--fg);
+  }
 }
 
 .stop .chev {
@@ -4300,8 +4398,10 @@ button.btn-primary,
   font-weight: 600;
 }
 
-.stop-menu button:hover:not(:disabled) {
-  background: var(--bg-alt);
+@media (hover: hover) {
+  .stop-menu button:hover:not(:disabled) {
+      background: var(--bg-alt);
+  }
 }
 
 .stop-menu button:disabled {
@@ -4392,8 +4492,10 @@ button.btn-primary,
   width: fit-content;
 }
 
-.save-pdf-btn:hover {
-  opacity: 0.9;
+@media (hover: hover) {
+  .save-pdf-btn:hover {
+      opacity: 0.9;
+  }
 }
 
 @media (min-width: 900px) {
@@ -4567,7 +4669,7 @@ button.btn-primary,
   font-weight: 700;
   letter-spacing: .04em;
   padding: 3px 9px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--accent-soft);
   color: var(--fg);
 }
@@ -4639,7 +4741,7 @@ button.btn-primary,
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -4731,8 +4833,10 @@ button.btn-primary,
   transition: color .15s ease;
 }
 
-.task-remove:hover {
-  color: var(--nom);
+@media (hover: hover) {
+  .task-remove:hover {
+      color: var(--nom);
+  }
 }
 
 @media (min-width: 900px) {
@@ -4780,8 +4884,10 @@ button.btn-primary,
   transition: border-color .15s ease, box-shadow .15s ease;
 }
 
-.travel-picked-card:hover {
-  border-color: var(--accent);
+@media (hover: hover) {
+  .travel-picked-card:hover {
+      border-color: var(--accent);
+  }
 }
 
 .travel-picked-thumb {
@@ -4909,11 +5015,14 @@ button.btn-primary,
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: all .15s ease;
+  transition: background-color .15s ease, color .15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.travel-tab-btn:hover {
-  color: var(--fg);
+@media (hover: hover) {
+  .travel-tab-btn:hover {
+      color: var(--fg);
+  }
 }
 
 .travel-tab-btn.active {
@@ -4950,7 +5059,6 @@ button.btn-primary,
   margin-bottom: 16px;
   box-shadow: var(--shadow);
 }
-
 
 .flight-search-container {
   padding: 16px;
@@ -5010,7 +5118,6 @@ button.btn-primary,
   outline: none;
 }
 
-
 .flight-dropdown-pill select option {
   color: #000;
   background: #fff;
@@ -5046,8 +5153,10 @@ button.btn-primary,
   line-height: 1;
 }
 
-.stepper-btn:hover {
-  opacity: 0.7;
+@media (hover: hover) {
+  .stepper-btn:hover {
+      opacity: 0.7;
+  }
 }
 
 .flight-dropdown-pill .flight-passengers-stepper,
@@ -5154,12 +5263,15 @@ button.btn-primary,
   place-items: center;
   cursor: pointer;
   flex: none;
-  transition: all .15s ease;
+  transition: background-color .15s ease, color .15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.flight-swap-btn:hover {
-  color: var(--fg);
-  background: var(--bg-alt);
+@media (hover: hover) {
+  .flight-swap-btn:hover {
+      color: var(--fg);
+      background: var(--bg-alt);
+  }
 }
 
 .flight-dates-inputs {
@@ -5261,7 +5373,6 @@ button.btn-primary,
   flex-wrap: wrap;
 }
 
-
 [data-theme="dark"] .flight-quick-chips .chip.sel {
   color: #000000 !important;
 }
@@ -5271,7 +5382,6 @@ button.btn-primary,
   gap: 8px;
   margin-bottom: 16px;
 }
-
 
 [data-theme="dark"] .flight-filter-chips-row .chip.sel {
   color: #000000 !important;
@@ -5386,7 +5496,6 @@ button.btn-primary,
   border-top: 1px solid var(--border);
 }
 
-
 /* ─── Hotels & Rentals Search Bar (Image 1 & 2) ─── */
 .stay-search-bar-wrap {
   display: flex;
@@ -5459,9 +5568,11 @@ button.btn-primary,
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.google-date-picker-box:hover,
-.google-date-picker-box:focus-within {
-  border-color: var(--fg);
+@media (hover: hover) {
+  .google-date-picker-box:hover,
+  .google-date-picker-box:focus-within {
+      border-color: var(--fg);
+  }
 }
 
 .google-date-half {
@@ -5505,12 +5616,15 @@ button.btn-primary,
   place-items: center;
   cursor: pointer;
   padding: 0;
-  transition: all 0.12s ease;
+  transition: background-color .12s ease, color .12s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.google-date-step:hover {
-  background: var(--bg-alt);
-  color: var(--fg);
+@media (hover: hover) {
+  .google-date-step:hover {
+      background: var(--bg-alt);
+      color: var(--fg);
+  }
 }
 
 .google-date-divider {
@@ -5588,6 +5702,7 @@ button.btn-primary,
   align-items: center;
   gap: 8px;
   overflow-x: auto;
+  overscroll-behavior: contain;
   padding-bottom: 8px;
   margin-bottom: 12px;
   -webkit-overflow-scrolling: touch;
@@ -5611,11 +5726,14 @@ button.btn-primary,
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: all .14s ease;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.travel-pill:hover {
-  border-color: var(--fg);
+@media (hover: hover) {
+  .travel-pill:hover {
+      border-color: var(--fg);
+  }
 }
 
 .travel-pill.active {
@@ -5699,8 +5817,10 @@ button.btn-primary,
   }
 }
 
-.stay-card-horizontal:hover {
-  box-shadow: var(--shadow-lift);
+@media (hover: hover) {
+  .stay-card-horizontal:hover {
+      box-shadow: var(--shadow-lift);
+  }
 }
 
 .stay-card-photo {
@@ -5899,7 +6019,7 @@ button.btn-primary,
   padding: 8px 10px;
 
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 
   background: var(--surface);
   color: var(--fg);
@@ -5908,11 +6028,14 @@ button.btn-primary,
   font-weight: 600;
 
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color .2s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.stay-google-btn:hover {
-  background: var(--bg-soft);
+@media (hover: hover) {
+  .stay-google-btn:hover {
+      background: var(--bg-soft);
+  }
 }
 
 /* Vacation Rentals Sponsored Carousel */
@@ -5928,6 +6051,7 @@ button.btn-primary,
   display: flex;
   gap: 12px;
   overflow-x: auto;
+  overscroll-behavior: contain;
   padding-bottom: 8px;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -5982,9 +6106,12 @@ button.btn-primary,
   text-decoration: none;
 }
 
-[data-theme="dark"] .auth-link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  [data-theme="dark"] .auth-link:hover {
+      text-decoration: underline;
+  }
 }
+
 /* ─── shared group plan (PlanScreen) ───
    The plan screen is a map above a sheet, per the reference: route pins on the
    map, then title, day tabs and the timed stop cards. All colours are tokens;
@@ -6039,7 +6166,6 @@ button.btn-primary,
   border: 1px solid var(--border);
   background: var(--bg-alt);
 }
-
 
 /* Private live-location controls */
 .my-location-controls {
@@ -6110,7 +6236,6 @@ button.btn-primary,
     animation: none;
   }
 }
-
 
 .plan-pin {
   width: 26px;
@@ -6188,8 +6313,10 @@ button.btn-primary,
   cursor: pointer;
 }
 
-.plan-own-summary:hover {
-  color: var(--fg);
+@media (hover: hover) {
+  .plan-own-summary:hover {
+      color: var(--fg);
+  }
 }
 
 .plan-avatars {
@@ -6227,6 +6354,7 @@ button.btn-primary,
   padding: 2px 20px 12px;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  overscroll-behavior: contain;
 }
 
 .plan-tab {
@@ -6309,7 +6437,7 @@ button.btn-primary,
 
 .plan-balance-track {
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--bg-alt);
   overflow: hidden;
 }
@@ -6317,7 +6445,7 @@ button.btn-primary,
 .plan-balance-track i {
   display: block;
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--accent-deep);
 }
 
@@ -6416,7 +6544,7 @@ button.btn-primary,
 .plan-mode-toggle {
   display: inline-flex;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--bg-alt);
   border: 1px solid var(--border);
   flex: none;
@@ -6426,7 +6554,7 @@ button.btn-primary,
   border: 0;
   background: none;
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-size: 12px;
   font-weight: 700;
   color: var(--muted);
@@ -6467,6 +6595,10 @@ button.btn-primary,
   object-fit: cover;
   background: var(--bg-alt);
   display: block;
+  /* Pure neutral, inset 1px. Never a palette colour: a tinted outline
+     reads as a coloured fringe on the photo edge. */
+  outline: 1px solid var(--img-outline);
+  outline-offset: -1px;
 }
 
 .stopsheet-body {
@@ -6605,6 +6737,10 @@ button.btn-primary,
   object-fit: cover;
   background: var(--bg-alt);
   flex: none;
+  /* Pure neutral, inset 1px. Never a palette colour: a tinted outline
+     reads as a coloured fringe on the photo edge. */
+  outline: 1px solid var(--img-outline);
+  outline-offset: -1px;
 }
 
 .plan-idea-main {
@@ -6655,7 +6791,7 @@ button.btn-primary,
   bottom: 108px;
   transform: translateX(-50%);
   padding: 9px 16px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--fg);
   color: var(--surface);
   font-size: 13px;
@@ -6688,7 +6824,7 @@ button.btn-primary,
   right: 12px;
   width: 30px;
   height: 30px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: none;
   background: color-mix(in srgb, var(--surface) 14%, transparent);
   color: var(--surface);
@@ -6786,7 +6922,7 @@ button.btn-primary,
 .day-vote-avatar {
   width: 26px;
   height: 26px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6898,7 +7034,7 @@ button.btn-primary,
 .rebuild-reason {
   font-size: 12px;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--fg);
@@ -7006,7 +7142,7 @@ button.btn-primary,
 .suggest-vote {
   width: 32px;
   height: 32px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--fg);

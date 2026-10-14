@@ -1,0 +1,138 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Motion policy. The one place that decides what moves, what does not, and
+   what happens when a user asks for less of it.
+
+   This file is imported last in main.jsx on purpose: it has to outrank the
+   rules in index.css and App.css that carry the animations, and same-
+   specificity ties go to whichever stylesheet the bundler emits last.
+
+   Two rules live here:
+     1. `prefers-reduced-motion` — movement, scale and blur become an opacity
+        cross-fade. Nothing is removed outright, because an instant cut reads
+        as a glitch where a fade reads as a state change.
+     2. `prefers-reduced-motion: no-preference` — the gate for anything that
+        is allowed to move at all.
+
+   framer-motion is handled separately and globally by <MotionConfig
+   reducedMotion="user"> in main.jsx, which covers every `animate` prop in the
+   app. This file covers the CSS layer only.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Opacity-only stand-ins for the two infinite spinners. The spinner still
+   reads as "busy" because the label beside it names the state; a motionless
+   ring would read as a broken icon. */
+@keyframes motion-fade-pulse {
+
+  from {
+    opacity: .45;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Stand-in for the screen-entrance slide. */
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  /* ── one-shot entrances: keep the fade, drop the travel ── */
+  .screen.active {
+    animation: motion-fade-in .2s linear both;
+  }
+
+  /* The splash hero drifts with kenburns; a static photo is the point here. */
+  .splash-photo img {
+    animation: none;
+  }
+
+  .splash-in,
+  .splash-cta {
+    animation: motion-fade-in .2s linear both;
+  }
+
+  /* ── card deck: opacity only. No CSS transform rule is touched here,
+        because framer-motion writes that inline from the drag value and a
+        competing transition would fight the gesture. ── */
+  .swcard {
+    transition: opacity .2s linear;
+  }
+
+  .swcard.back1 {
+    filter: none;
+  }
+
+  .swcard.back2 {
+    filter: none;
+  }
+
+  /* ── sheets: the slide becomes a fade so open/close still reads ── */
+  .sheet {
+    transform: none;
+    transition: opacity .2s linear;
+  }
+
+  /* ── press feedback: no scale ── */
+  .btn:active,
+  .sw-btn:active {
+    transform: none;
+  }
+
+  /* ── hover lifts are decoration on top of a colour cue ── */
+  .sw-btn,
+  .reason-chip {
+    transition: background-color .15s linear, border-color .15s linear, color .15s linear;
+  }
+
+  .sw-btn:hover,
+  .reason-chip:hover {
+    transform: none;
+  }
+
+  /* ── toggle knob travel ── */
+  .travel-toggle,
+  .travel-toggle::before {
+    transition: none;
+  }
+
+  /* ── progress bars: a 700-900ms width tween is the longest animation in the
+        app and the least informative. Snap it. ── */
+  .progressbar>i,
+  .trait .bar i,
+  .msrow .bar i {
+    transition: none;
+  }
+
+  /* ── infinite rotations: cross-fade instead, so "busy" still reads ── */
+  .skeleton-spinner,
+  .plan-state-spinner,
+  .spin-anim {
+    animation: motion-fade-pulse 1.4s ease-in-out infinite alternate;
+  }
+
+  .my-location-pulse {
+    animation: none;
+  }
+}
+
+/* ── theme switch ──────────────────────────────────────────────────────────
+   Flipping data-theme fires every colour transition on the page at once, so
+   the switch smears. The class is added for exactly one frame (see App.jsx),
+   while this suppresses transitions and then lets the next frame restore
+   them. */
+html.theme-switching,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+  animation: none !important;
+}
